@@ -62,7 +62,7 @@ ws.onmessage = (e) => {
       { name: MANIFEST.name, short: MANIFEST.short, description: MANIFEST.description, version: MANIFEST.version, author: MANIFEST.author, url: MANIFEST.url, selected: true, builtin: false, config: MANIFEST.config },
       { name: '默认主题', short: 'default', description: '', version: '1.0.0', author: 'Monitor', url: '', selected: false, builtin: true, config: [] },
     ] });
-    if (/\/api\/me(\?|$)/.test(u)) return json({ authed: true, admin: true, github: false, public_page: true, site: BASE, site_name: 'Komari Monitor' });
+    if (/\/api\/me(\?|$)/.test(u)) return json({ authed: true, admin: true, github: false, public_page: true, site: BASE, site_name: '演示站点' });
     if (/\/api\/nodes/.test(u)) return json({ nodes: [] });
     if (/\/api\/ping-tasks/.test(u)) return json({ tasks: [] });
     if (/\/api\/version/.test(u)) return json({ version: '1.3.0' });
