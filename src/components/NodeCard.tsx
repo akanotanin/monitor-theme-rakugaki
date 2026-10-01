@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card"
 import { LatencyPanel } from "@/components/Latency"
 import { Meter } from "@/components/Meter"
 import type { Node } from "@/lib/api"
-import { CYCLES, FOREVER, bytes, currencySymbol, daysUntil, money, moneyAmount, pair, percent, rate, uptime } from "@/lib/format"
+import { CYCLES, FOREVER, bytes, daysUntil, money, pair, percent, rate, uptime } from "@/lib/format"
 import { hasNotes, tagsFor } from "@/lib/site-settings"
 
 /**
@@ -117,42 +117,11 @@ function expiryText(node: Node): string | null {
 }
 
 /**
- * 详细档第二行。两副面孔：
- *   原样（备注关）——左「在线时长」、右「价格 / 周期」。
- *   备注开——两边对调并让位：左「备注标签」、右「在线时长」，价格移进下面第三枚读数盒。
- * 两样都没有就整行不画。
+ * 详细档第二行：左「在线时长」、右「价格 / 周期」——**备注不再重排这一行**
+ * （改版前它会把价格挤进第三枚读数盒、把到期日藏起来；现在这两样都留在原位）。
  */
-function MetaRow({ node, notes, remark }: { node: Node; notes: string; remark: boolean }) {
+function MetaRow({ node }: { node: Node }) {
   const online = onlineText(node)
-  if (remark) {
-    const tags = tagsFor(notes, node.name)
-    if (!online && tags.length === 0) return null
-    return (
-      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        {/* 一枚标签一个胶囊：备注里用逗号分隔，这里就排成多枚（`三网优化,备用` 是两枚）。
-            容器 flex-1 + flex-wrap：排不下时往下折行，右侧「在线时长」始终贴右不动。
-            空占位那块保住「在线时长」始终贴右，与另一副面孔里的价格同一位置。 */}
-        {tags.length > 0
-          ? (
-            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-              {tags.map((tag, i) => (
-                <Badge
-                  key={`${i}-${tag}`}
-                  variant="secondary"
-                  // Badge 自带 `w-fit shrink-0`：单枚过长时要能被容器截断，所以放开 shrink、限 max-w-full。
-                  className="min-w-0 max-w-full shrink font-normal"
-                  title={tag}
-                >
-                  <span className="min-w-0 truncate">{tag}</span>
-                </Badge>
-              ))}
-            </span>
-          )
-          : <span className="min-w-0 flex-1" />}
-        {online && <span className="shrink-0 truncate text-right">{online}</span>}
-      </div>
-    )
-  }
   const price = priceText(node)
   const cycle = cycleText(node)
   if (!online && !price) return null
@@ -167,7 +136,7 @@ function MetaRow({ node, notes, remark }: { node: Node; notes: string; remark: b
 /**
  * 详细档那三枚读数盒：实时速率 / 累计总量 / 剩余时间。一层浅底把它们与上下的网格分开，
  * 像仪表盘上嵌进去的读数窗——前两个对应「此刻」与「累计」，第三个上面是本机还剩多久、
- * 下面一行备注关时写到期日、备注开时换成价格与计费周期。
+ * 下面一行写到期日。
  */
 function InfoBox({ children }: { children: ReactNode }) {
   return (
@@ -204,7 +173,7 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
   onWarm?: () => void
   latencyLines: string
   cardStyle: "classic" | "latency" | "detailed" | "plain"
-  /** 「详细」形态的服务器备注清单（每行 `服务器名=备注`）；空串 = 关闭。 */
+  /** 服务器备注清单（每行 `服务器名=备注`）；空串 = 关闭。三种形态共用这一份。 */
   notes: string
 }) {
   const m = node.metrics
@@ -213,15 +182,15 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
   // 简约档：读数格与经典是同一个骨架，只换一套视觉处理——表名提亮成前景色、进度条压细、
   // 底注变小、格行距收紧、底部网络收成一行（见下方各处 plain 分支）。
   const plain = cardStyle === "plain"
-  // 备注在「详细」与「延迟」两档生效，且清单非空才算开——留空即关闭，两档都保持原样。
-  const remark = detailed && hasNotes(notes)
+  // 三种形态的备注各落一处：「详细」在标题行右端、「延迟」在右上角浮层里、
+  // 「紧凑」在展开行的量程栏那枚图标里；清单非空才算开。
+  const noteTags = hasNotes(notes) ? tagsFor(notes, node.name) : []
   /**
    * 「延迟」档右上角那枚信息控件：悬停或点击弹出浮层，里面是**备注 + 在线时间 + 价格 + 到期**。
    * 「延迟」档本来不写这些（它们原来只有「详细」档有），浮层让它们按需出现，卡片本身
-   * 一个像素都不为此让位——默认关闭时与没有备注、没有这枚控件时逐像素相同。
+   * 一个像素都不为此让位——关闭时与没有备注、没有这枚控件时逐像素相同。
    */
   const peek = cardStyle === "latency"
-  const noteTags = hasNotes(notes) ? tagsFor(notes, node.name) : []
   const [peekOpen, setPeekOpen] = useState(false)
   const peekRef = useRef<HTMLSpanElement>(null)
   // 钉住（点开）之后点别处要能收起；点卡片别的地方会跳详情页，所以只在浮层外按下时收。
@@ -295,7 +264,25 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
           名字推到省略号。 */}
       <div className="flex min-w-0 items-center gap-2">
         <Country node={node} />
-        <h3 className="font-display truncate text-[15px] font-semibold tracking-[-.01em]">{node.name}</h3>
+        <h3 className="font-display min-w-0 truncate text-[15px] font-semibold tracking-[-.01em]">{node.name}</h3>
+        {/* 「详细」档的备注：挂在**标题行右端**——名字下面那一行、读数格、三枚读数盒一概不动
+            （改版前它会把价格挤进读数盒、把到期日藏起来，那套重排已经取消）。
+            ★名字优先：名字那格照旧（可截断），标签这格给宽度上限（窄屏 40%、≥sm 55%）+ 极高的可压缩度
+            `[flex-shrink:100]` —— 空间不够时**先把标签压掉、名字保持原宽**，标签自己逐枚截断。 */}
+        {detailed && noteTags.length > 0 && (
+          <span className="ml-auto flex min-w-0 max-w-[40%] items-center justify-end gap-1 overflow-hidden [flex-shrink:100] sm:max-w-[55%]">
+            {noteTags.map((tag, i) => (
+              <Badge
+                key={`${i}-${tag}`}
+                variant="secondary"
+                className="min-w-0 max-w-[9rem] shrink font-normal text-muted-foreground"
+                title={tag}
+              >
+                <span className="min-w-0 truncate">{tag}</span>
+              </Badge>
+            ))}
+          </span>
+        )}
         {/* 「延迟」档右上角的信息控件（悬停/点击弹浮层：备注 · 在线时间 · 价格 · 到期）。
             卡片自己是 role=button，所以点击与 Enter/空格都要拦在控件里，别让它冒泡成「打开详情页」；
             浮层挂在同一个 relative 容器内，鼠标从图标移到浮层上不会把它关掉。 */}
@@ -362,7 +349,7 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
           the live figures blank beats a stretched card with one line in it. */}
       {deployed(node) ? (
         <>
-          {detailed && <MetaRow node={node} notes={notes} remark={remark} />}
+          {detailed && <MetaRow node={node} />}
 
           <div className={`mt-4 grid grid-cols-2 gap-x-4 ${plain ? "gap-y-3" : "gap-y-4"}`}>
             {/* The core count belongs beside the word CPU: it is what the
@@ -420,7 +407,7 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
           ) : (
             <>
               {/* 详细形态：网速、总量，加第三枚读数盒并排。第三枚上面一直是「剩余时间」，
-                  下面一行备注关时写到期日、备注开时换成「价格 / 周期」（到期日不再显示）。
+                  下面一行写到期日。
                   速率与总量各按上下行分两行；配色与另外两档同一套灰。下面照旧挂三网延迟。 */}
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <InfoBox>
@@ -433,22 +420,10 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
                 </InfoBox>
                 <InfoBox>
                   <Stat icon={CalendarClock}>{expiryText(node) ?? "无期限"}</Stat>
-                  {remark
-                    ? price && (
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        {/* 货币符号单独占一列，和上面「剩余时间」前那枚时钟图标同宽同位——
-                            两行的左边缘才对得齐（符号缺位时这一列留空，数字仍从这里起）。
-                            颜色不降级：这一排三格讲的都是读数，上一格写剩余时间、这一格写计费，
-                            都该是前景色（弱化灰留给真正的附注）。 */}
-                        <span className="w-3 shrink-0 text-center">{currencySymbol(node.currency)}</span>
-                        <span className="tnum truncate">
-                          {moneyAmount(node.price, node.currency)}{cycle ? ` / ${cycle}` : ""}
-                        </span>
-                      </span>
-                    )
-                    : node.expires_at && (
-                      <span className="block truncate pl-[18px] text-muted-foreground">{node.expires_at}</span>
-                    )}
+                  {/* 备注不再重排这一排：第三枚读数盒下面**永远是到期日**（价格留在第二行右侧）。 */}
+                  {node.expires_at && (
+                    <span className="block truncate pl-[18px] text-muted-foreground">{node.expires_at}</span>
+                  )}
                 </InfoBox>
               </div>
               <LatencyPanel node={node} lines={latencyLines} />
