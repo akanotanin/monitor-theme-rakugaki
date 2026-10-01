@@ -69,10 +69,11 @@ if (!process.env.SKIP_SHOTS) {
 // 形态与列表页顶部那两行由 shot_preview 在浏览器层就地覆写（线上/桩里的站点配置一个字不动）。
 if (process.argv.includes('--preview')) {
   const PREVIEWS = [
-    // 面板卡片上那张（16:9、object-cover object-top，缩到约 300px 宽）：选「经典 + 分组 +
-    // 概览」——八台机器两行都完整落在画面里。延迟/详细那两档的卡片更高，一行就撑满 810，
-    // 第二行会被从卡片中间裁断；缩略图下那半截反而像没取好景。
-    ['preview.png', 'classic', { listTop: 'both' }],
+    // 面板卡片上那张（16:9、object-cover object-top，缩到约 300px 宽）：1.1.0 起默认档是
+    // 「简约」，封面就跟着它走 + 分组与概览两行——八台机器两行都完整落在画面里。延迟/详细
+    // 那两档的卡片更高，一行就撑满 810，第二行会被从卡片中间裁断；缩略图下那半截反而像没取好景。
+    ['preview.png', 'plain', { listTop: 'both' }],
+    ['preview-plain.png', 'plain', { listTop: 'summary' }],
     ['preview-classic.png', 'classic', { listTop: 'summary' }],
     ['preview-latency.png', 'latency', { listTop: 'summary' }],
     ['preview-detailed.png', 'detailed', { listTop: 'summary' }],

@@ -1,4 +1,4 @@
-// 验「卡片形态」四档（经典 / 延迟 / 详细 / 紧凑）在真实渲染里各自的形状，以及旧值 detail → latency 的迁移。
+// 验「卡片形态」五档（经典 / 简约 / 延迟 / 详细 / 紧凑）在真实渲染里各自的形状，以及旧值 detail → latency 的迁移。
 //
 // 用法：node tools/verify_card_styles.mjs [port]
 //
@@ -6,12 +6,17 @@
 // （或让 classic 悄悄开始拉延迟数据）。这里用本机静态伺服 + 桩 /api/*（含带 ping 历史的
 // /api/nodes/{id}/metrics）跑真 React 组件，逐档断言 DOM 形状、访客端请求数与列表上的读数：
 //
-//   经典   —— 网络 2×2 那格在；不发任何 ping 请求
-//   延迟   —— 网络合成一行 + 三网延迟块；每节点恰好 1 次 ping 请求；指定线路按填写顺序、名字对不上跳过
+//   经典   —— 底部是 2×2 四格（速率一行、总量一行，箭头是文字 ↓ ↑）；不发任何 ping 请求；
+//             标签弱化灰 / 条 10px / 底注 12px / 格行距 16px
+//   简约   —— 底部收成一行两段（左实时速率 / 右累计总量）；同样不发 ping 请求；与经典同一批
+//             读数与同一个骨架，只换这一套视觉：标签提亮成前景色 / 条 6px（上下各留 6px）/
+//             底注 11px / 格行距 12px。两档的视觉值都钉住，才叫「只换了这一套」
+//   延迟   —— 底部那一行与「简约」**逐项相同**（同一个节点）+ 三网延迟块；每节点恰好 1 次
+//             ping 请求；指定线路按填写顺序、名字对不上跳过
 //   详细   —— 元信息行 + 三枚读数盒 + 三网延迟块；标题行不再有状态点；网格不再有 xl 四列
 //   紧凑   —— 一张表、一行一台，表头与列随屏宽收放；不发 ping 请求
 //   旧值   —— 配置里存 detail（1.2.9 的值）时必须渲染成「延迟」，不能掉回经典
-//   非法值 —— 回落经典（含不发延迟请求）
+//   非法值 —— 回落「简约」（1.1.0 起的默认档；含不发延迟请求）
 //
 // 判据全部走 DOM（类名/属性/文本），不靠看图。
 //
@@ -183,8 +188,56 @@ const PROBE = `JSON.stringify((() => {
     cards: cards.length,
     allCards: all.length,
     grid: document.querySelector('.grid')?.className ?? '',
-    classicNet: q('[class*="gap-y-2"][class*="border-t"]'),
-    latencyRow: q('[class*="gap-x-3"]'),
+    netRow: q('[data-net="row"]'),
+    netGrid: q('[data-net="grid"]'),
+    // 经典档底部那 2×2 四格：格子数 / 栅格列数 / 有没有 svg（箭头应该是文字）/ 两端配色 /
+    // 几何。找不到时返回**空壳**而不是 null —— 否则旧构建上第一条断言就抛 TypeError，
+    // 把后面几十条一起带走，反向自测时看不出到底该报哪些。
+    netG: (() => {
+      const g = first ? first.querySelector('[data-net="grid"]') : null
+      const empty = { cells: 0, cols: 0, svg: 0, text: '', mt: '', pt: '', fs: '', border: '', borderStyle: '', rateColor: null, arrowColor: null, totalColor: null }
+      if (!g) return empty
+      const cs = (el) => el ? getComputedStyle(el) : null
+      const cells = [...g.children]
+      return {
+        cells: cells.length,
+        cols: cs(g).gridTemplateColumns.split(' ').filter(Boolean).length,
+        svg: g.querySelectorAll('svg').length,
+        text: g.innerText.replace(/\\n/g, ' | '),
+        mt: cs(g).marginTop, pt: cs(g).paddingTop, fs: cs(g).fontSize,
+        // ★ 边框宽度在浏览器里是**取整后的使用值**：1.5px 在 DPR=1 下算出来是 1px
+        // （实测，进度条那条 1.5px 描边同样如此）。所以判据写成「有这条虚线、不细于 1px」，
+        // 别拿 1.5px 当字符串比 —— 那会永远 FAIL，而且看着像布局没生效。
+        // （这段在模板字符串里，别写反引号。）
+        border: cs(g).borderTopWidth, borderStyle: cs(g).borderTopStyle,
+        rateColor: cells[0] ? cs(cells[0]).color : null,
+        arrowColor: cells[0] && cells[0].children[0] ? cs(cells[0].children[0]).color : null,
+        totalColor: cells[2] ? cs(cells[2]).color : null,
+        // 四格同宽（卡片 299px / 4 列时每格 ~125px），内容比那窄：这里也顺手钉住不被截断。
+        clipped: cells.filter((s) => s.scrollWidth > s.clientWidth + 1).map((s) => s.innerText.replace(/\\n/g, ' ')),
+      }
+    })(),
+    // 卡片底部那一行（简约 / 延迟档）：子元素数、有没有 svg、左右两端配色、间距与对齐，
+    // 以及**有没有被截断**（scrollWidth > clientWidth 才是真截断；innerText 照样返回全量文本，
+    // 「文本对不对」这条断言看不见它，上一版就在这里静默截成了「↑ 2.3 …」）。
+    // 卡片底部那一行（简约 / 延迟档）：子元素数、有没有 svg、左右两端配色、间距与对齐。
+    net: (() => {
+      const row = first ? first.querySelector('[data-net="row"]') : null
+      if (!row) return null
+      const cs = (el) => el ? getComputedStyle(el) : null
+      const spans = [...row.children]
+      return {
+        children: row.children.length,
+        svg: row.querySelectorAll('svg').length,
+        text: row.innerText.replace(/\\n/g, ' | '),
+        leftColor: spans[0] ? cs(spans[0]).color : null,
+        rightColor: spans[1] ? cs(spans[1]).color : null,
+        marginTop: cs(row).marginTop, paddingTop: cs(row).paddingTop,
+        borderTop: cs(row).borderTopWidth, font: cs(row).fontSize, justify: cs(row).justifyContent,
+        wrap: cs(row).flexWrap,
+        clipped: spans.filter((s) => s.scrollWidth > s.clientWidth + 1).map((s) => s.innerText.replace(/\\n/g, ' ')),
+      }
+    })(),
     infoBox: q('[class*="bg-paper-warm"]'),
     infoGrid: q('[class*="grid-cols-3"]'),
     dots: all.reduce((n, c) => n + c.querySelectorAll('span[aria-label="在线"],span[aria-label="离线"],span[aria-label="刚接入"]').length, 0),
@@ -192,6 +245,41 @@ const PROBE = `JSON.stringify((() => {
     polylines: document.querySelectorAll('svg polyline').length,
     rows: [...(first?.querySelectorAll('[class*="border-t"] span.w-16') ?? [])].map((s) => s.textContent.trim()),
     text: first ? first.innerText.replace(/\\n/g, ' | ') : '',
+  }
+})())`
+
+// 形态专用探针：量的是「哪几把视觉尺子」，取数一律**按结构**
+// （卡片第 2 个孩子 = 读数格，格里的第 1 块 = CPU），不认 Tailwind 类名。
+// 卡片外壳那两条（描边 2px 墨线 + 6px 硬偏移影子）是 rakugaki 的皮肤，两档都该一样——
+// 钉住它们等于顺手证明这次改动没碰到皮肤层。
+const PLAIN_PROBE = `JSON.stringify((() => {
+  const card = [...document.querySelectorAll('[role=button]')].find((c) => /CPU/.test(c.innerText))
+  if (!card) return null
+  const grid = card.children[1]
+  const box = grid ? grid.children[0] : null
+  const row = box ? box.children[0] : null
+  const label = row ? row.children[0] : null
+  const bar = box ? box.children[1] : null
+  const foot = box ? box.children[2] : null
+  const name = card.querySelector('h3')
+  const cs = (el) => el ? getComputedStyle(el) : null
+  return {
+    cardBorder: cs(card).borderTopWidth,
+    cardBorderStyle: cs(card).borderTopStyle,
+    cardShadow: cs(card).boxShadow,
+    nameWeight: name ? cs(name).fontWeight : null,
+    nameFamily: name ? cs(name).fontFamily.split(',')[0] : null,
+    labelColor: label ? cs(label).color : null,
+    pctColor: row ? cs(row.lastElementChild).color : null,
+    footColor: foot ? cs(foot).color : null,
+    barH: bar ? cs(bar).height : null,
+    barTop: bar ? cs(bar).marginTop : null,
+    barBottom: bar ? cs(bar).marginBottom : null,
+    barBorder: bar ? cs(bar).borderTopWidth : null,
+    barBorderStyle: bar ? cs(bar).borderTopStyle : null,
+    footSize: foot ? cs(foot).fontSize : null,
+    rowGap: grid ? cs(grid).rowGap : null,
+    text: card.innerText.replace(/\\n/g, ' | '),
   }
 })())`
 
@@ -258,24 +346,108 @@ async function renderCompact(cfg, width, tag) {
 const results = []
 const check = (name, ok, detail) => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`) }
 
-/* 1) 经典 */
+/* 1) 经典（顺带量一遍它的视觉值，作为简约档那几条的对照——两边都钉住才叫「只换了这一套」） */
+let classicStyle = null
 {
   const { dom, ping } = await render({ cardStyle: 'classic' }, 'classic')
+  classicStyle = JSON.parse(await evalJS(PLAIN_PROBE))
   check('桩数据已落到卡片（CPU 13% / 内存 1.00 / 2.00 GB / 总量 1.00 TB 与 256 GB）',
     /1[23]%/.test(dom.text) && /1\.00 \/ 2\.00 GB/.test(dom.text) && /1\.00 TB/.test(dom.text) && /256 GB/.test(dom.text),
     dom.text)
-  check('经典：网络 2×2 那格在', dom.classicNet === 1, `找到 ${dom.classicNet} 个`)
-  check('经典：没有延迟块', dom.latencyRow === 0 && dom.polylines === 0, `行 ${dom.latencyRow} / polyline ${dom.polylines}`)
+  // ── 经典档底部 = 2×2 四格（速率一行、总量一行），不是简约档那条一行两段。
+  check('经典：底部是 2×2 四格、不是一行两段', dom.netGrid === 1 && dom.netRow === 0,
+    `四格 ${dom.netGrid} / 一行 ${dom.netRow}`)
+  check('经典：两列四格、箭头是文字不是图标',
+    dom.netG.cells === 4 && dom.netG.cols === 2 && dom.netG.svg === 0,
+    JSON.stringify({ cells: dom.netG.cells, cols: dom.netG.cols, svg: dom.netG.svg }))
+  // 归一化要连单位一起吃掉（KB/s、GB、TB 会随数据变），只留「箭头 + 数值」的次序与空格。
+  check('经典：四格文案＝↓ 速率 / ↑ 速率 / ↓ 总量 / ↑ 总量（箭头与数值之间有空格）',
+    dom.netG.text.replace(/[0-9][0-9.,]*(\s*[A-Za-z/]+)?/g, '#') === '↓ # | ↑ # | ↓ # | ↑ #', dom.netG.text)
+  check('经典：速率那行是墨色、箭头弱化；总量那行整格弱化',
+    dom.netG.arrowColor !== dom.netG.rateColor && dom.netG.totalColor === dom.netG.arrowColor,
+    JSON.stringify({ arrow: dom.netG.arrowColor, rate: dom.netG.rateColor, total: dom.netG.totalColor }))
+  check('经典：四格上面是那条手画虚线、间距 mt/pt 16px、12px 字号',
+    dom.netG.mt === '16px' && dom.netG.pt === '16px' && dom.netG.fs === '12px'
+    && dom.netG.borderStyle === 'dashed' && parseFloat(dom.netG.border) >= 1,
+    JSON.stringify({ mt: dom.netG.mt, pt: dom.netG.pt, fs: dom.netG.fs, border: dom.netG.border, style: dom.netG.borderStyle }))
+  check('经典：四格都没有被截断（等宽读数在 4 列下也装得下）', dom.netG.clipped.length === 0,
+    JSON.stringify(dom.netG.clipped))
+  check('经典：没有延迟块', dom.polylines === 0, `polyline ${dom.polylines}`)
   check('经典：不发延迟请求', ping === 0, `实测 ${ping} 次`)
   check('经典：无状态点、无读数盒', dom.dots === 0 && dom.infoBox === 0, `点 ${dom.dots} / 盒 ${dom.infoBox}`)
   check('经典：网格保留 xl 四列', dom.grid.includes('xl:grid-cols-4'), dom.grid)
+  check('经典：标签与底注同为弱化灰（标签没被提亮）',
+    classicStyle.labelColor === classicStyle.footColor, `${classicStyle.labelColor} vs ${classicStyle.footColor}`)
+  check('经典：条 10px、底注 12px、格行距 16px',
+    classicStyle.barH === '10px' && classicStyle.footSize === '12px' && classicStyle.rowGap === '16px',
+    JSON.stringify({ barH: classicStyle.barH, footSize: classicStyle.footSize, rowGap: classicStyle.rowGap }))
+  check('皮肤层没被这次改动碰到（2px 墨线 + 6px 硬偏移影子）',
+    classicStyle.cardBorder === '2px' && classicStyle.cardBorderStyle === 'solid' && /6px 6px/.test(classicStyle.cardShadow),
+    JSON.stringify({ b: classicStyle.cardBorder, s: classicStyle.cardShadow }))
+}
+
+/* 1b) 简约（新档、1.1.0 起的默认）：与经典同一个骨架、同一批读数，只换一套视觉处理 */
+{
+  const { dom, ping } = await render({ cardStyle: 'plain' }, 'plain')
+  const s = JSON.parse(await evalJS(PLAIN_PROBE))
+  check('简约：底部是一行两段、无延迟块、无读数盒',
+    dom.netRow === 1 && dom.netGrid === 0 && dom.polylines === 0 && dom.infoBox === 0,
+    `网络行 ${dom.netRow} / 四格 ${dom.netGrid} / 盒 ${dom.infoBox} / polyline ${dom.polylines}`)
+  check('简约：一行两段是「左实时速率 + 右累计总量」，箭头是文字、两端配色不同',
+    dom.net !== null && dom.net.children === 2 && dom.net.justify === 'space-between' && dom.net.svg === 0
+    && dom.net.leftColor !== dom.net.rightColor
+    && /↓/.test(dom.net.text) && /↑/.test(dom.net.text) && !/·/.test(dom.net.text),
+    JSON.stringify({ n: dom.net?.children, justify: dom.net?.justify, svg: dom.net?.svg, text: dom.net?.text }))
+  // ★ 这一条是「两端各自被截成 ↓ … ↑ …」那个静默缺陷的护栏：文本断言看不见截断（innerText 仍是全量），
+  // 只有 scrollWidth > clientWidth 才算数。rakugaki 的等宽读数比 jikasei 宽四成，所以那行**必须**允许折行
+  // （flex-wrap）：4 列下折成两行，3 列及更宽仍是一行。
+  check('简约：那行允许折行、两段都没被截断（窄卡片下不出现「↑ 2.3 …」）',
+    dom.net.wrap === 'wrap' && dom.net.clipped.length === 0, `wrap=${dom.net.wrap}｜${JSON.stringify(dom.net.clipped)}`)
+  check('简约：不发延迟请求（这一档与经典一样不含三网延迟）', ping === 0, `实测 ${ping} 次`)
+  check('简约：网格保留 xl 四列（版式没被这一档改掉）', dom.grid.includes('xl:grid-cols-4'), dom.grid)
+  check('简约：标签提亮成墨色（与底注那层弱化灰不同）',
+    s.labelColor !== s.footColor, `${s.labelColor} vs ${s.footColor}`)
+  check('简约：标签与百分比同色（同一行左右两截亮度一致）',
+    s.labelColor === s.pctColor, `${s.labelColor} vs ${s.pctColor}`)
+  check('简约：进度条压到 6px、上下各留 6px（经典是 10px / 上 8px）',
+    s.barH === '6px' && s.barTop === '6px' && s.barBottom === '6px',
+    JSON.stringify({ h: s.barH, top: s.barTop, bottom: s.barBottom }))
+  check('简约：条仍是手画的墨线槽（墨色描边没被这一档改掉）',
+    s.barBorderStyle === 'solid' && parseFloat(s.barBorder) >= 1 && s.barBorder === classicStyle.barBorder,
+    `${s.barBorder}/${s.barBorderStyle}（经典 ${classicStyle.barBorder}）`)
+  check('简约：底注降到 11px', s.footSize === '11px', s.footSize)
+  check('简约：读数格行距收紧到 12px（经典 16px）', s.rowGap === '12px', s.rowGap)
+  // 名字这一档在 rakugaki 里**不动**：包里只随附 Newsreader 的 600 一档（见 FONTS.md），
+  // 经典/简约/延迟/详细共用一个字体栈，所以 jikasei 那条「名字加粗一档」在这里没有对应物。
+  check('简约：名字仍是展示字体 600（本主题只随包一档字重，两档一致）',
+    s.nameWeight === '600' && s.nameWeight === classicStyle.nameWeight && /Newsreader/.test(s.nameFamily),
+    JSON.stringify({ plain: s.nameWeight, classic: classicStyle.nameWeight, family: s.nameFamily }))
+  check('简约：皮肤层照旧（2px 墨线 + 6px 硬偏移影子）',
+    s.cardBorder === '2px' && /6px 6px/.test(s.cardShadow), JSON.stringify({ b: s.cardBorder, sh: s.cardShadow }))
 }
 
 /* 2) 延迟（新名字） */
 {
+  // 对照组：**简约**档底部那一行（经典档已恢复成 2×2 四格，不再是这一档的参照物）。
+  // 判据写成**逐项等价**（结构 / 两端配色 / 间距 / 分隔线 / 两端对齐 + 文案形状），
+  // 而不是「看着差不多」——只断自己等于没证明两档真的看齐了。
+  const base = await render({ cardStyle: 'plain' }, 'latency-vs-plain')
   const { dom, ping } = await render({ cardStyle: 'latency' }, 'latency')
-  check('延迟：网络合成一行', dom.latencyRow === 1, `找到 ${dom.latencyRow} 个`)
-  check('延迟：经典那格不在', dom.classicNet === 0, `找到 ${dom.classicNet} 个`)
+  const geom = (n) => JSON.stringify({
+    seg: n.children, svg: n.svg, left: n.leftColor, right: n.rightColor,
+    mt: n.marginTop, pt: n.paddingTop, border: n.borderTop, fs: n.font, justify: n.justify,
+    text: n.text.replace(/[0-9][0-9.,]*/g, '#'),
+  })
+  check('延迟：底部那行与「简约」逐项相同（结构 · 配色 · 间距 · 对齐 · 文案形状）',
+    dom.net !== null && base.dom.net !== null && geom(dom.net) === geom(base.dom.net),
+    `延迟 ${geom(dom.net)} / 简约 ${geom(base.dom.net)}`)
+  check('延迟：不是经典档那 2×2 四格', dom.netGrid === 0, `四格 ${dom.netGrid}`)
+  check('延迟：那行是「实时速率在左、累计总量在右」两段，箭头是文字',
+    dom.net.children === 2 && dom.net.leftColor !== dom.net.rightColor && dom.net.svg === 0
+    && /↓/.test(dom.net.text) && /↑/.test(dom.net.text),
+    `${dom.net.children} 段 / ${dom.net.leftColor} vs ${dom.net.rightColor} / svg ${dom.net.svg}`)
+  check('延迟：不再是从前那条「速率 · 总量」分隔点式（图标箭头也没了）',
+    !/·/.test(dom.net.text) && dom.net.svg === 0, dom.net.text)
   check('延迟：三网延迟块已渲染（每张卡片 3 条线路）', dom.polylines === 3 * dom.cards, `polyline ${dom.polylines} / 卡 ${dom.cards}`)
   check('延迟：每节点恰好 1 次延迟请求', ping === 2, `实测 ${ping} 次`)
   check('延迟：线路按后台顺序取前三条', dom.rows.join('/') === '北京电信/上海电信/广州电信', dom.rows.join('/'))
@@ -305,7 +477,8 @@ const check = (name, ok, detail) => { results.push({ name, ok, detail }); consol
   check('详细：三网延迟块也照旧', dom.polylines === 3 * dom.cards, `polyline ${dom.polylines} / 卡 ${dom.cards}`)
   check('详细：每节点恰好 1 次延迟请求', ping === 2, `实测 ${ping} 次`)
   check('详细：网格不再有四列（卡片更宽）', !dom.grid.includes('xl:grid-cols-4'), dom.grid)
-  check('详细：经典那格不在', dom.classicNet === 0, `找到 ${dom.classicNet} 个`)
+  check('详细：底部的两档形状都不在（读数盒已取代它们）', dom.netRow === 0 && dom.netGrid === 0,
+    `一行 ${dom.netRow} / 四格 ${dom.netGrid}`)
 }
 
 /* 3b) 详细 + 服务器备注（备注开启）：到期位换价格、在线位让给备注标签 */
@@ -355,8 +528,8 @@ const check = (name, ok, detail) => { results.push({ name, ok, detail }); consol
 {
   // 备注只影响「详细」档：切到经典/延迟时清单存在也不改卡片形状。
   const { dom } = await render({ cardStyle: 'classic', serverNotes: '节点一=东京 · 三网优化' }, 'classic-notes')
-  check('备注不影响经典档（不冒出读数盒与标签）',
-    dom.classicNet === 1 && dom.infoBox === 0 && !dom.text.includes('东京 · 三网优化'), dom.text)
+  check('备注不影响经典档（仍是四格、不冒出读数盒与标签）',
+    dom.netGrid === 1 && dom.netRow === 0 && dom.infoBox === 0 && !dom.text.includes('东京 · 三网优化'), dom.text)
 }
 
 /* 3c) 详细 + 多枚标签：备注里用逗号分隔＝多枚独立胶囊（写法 `节点一=测试测试,222,333`）。
@@ -409,7 +582,8 @@ const TAGS_PROBE = `(() => {
   check('多标签：折行后没有横向溢出（每枚都在行内、不撞在线时长）',
     b.boxes.every((x) => x.x >= b.rowLeft - 1 && x.r <= b.onlineRight + 1), JSON.stringify(b.boxes))
   check('多标签：整体不超过卡片（备注区不撑破卡片）', b.boxes.every((x) => x.r <= b.rowRight + 1), JSON.stringify(b.boxes))
-  check('多标签：长清单下经典那格仍不在（只是多了标签）', dom.classicNet === 0, `${dom.classicNet}`)
+  check('多标签：长清单下网速那两块都不在（只是多了标签）', dom.netRow === 0 && dom.netGrid === 0,
+    `一行 ${dom.netRow} / 四格 ${dom.netGrid}`)
 }
 {
   // 没写逗号的单枚备注不许变成多枚，也不许换行。
@@ -424,18 +598,19 @@ const TAGS_PROBE = `(() => {
 /* 4) 旧值 detail 必须迁到延迟，不能掉回经典 */
 {
   const { dom, ping } = await render({ cardStyle: 'detail' }, 'detail-old')
-  check('旧值 detail → 延迟（三网延迟块在）', dom.polylines === 3 * dom.cards && dom.latencyRow === 1, `polyline ${dom.polylines} / 行 ${dom.latencyRow}`)
-  check('旧值 detail → 延迟（不是经典）', dom.classicNet === 0, `经典格 ${dom.classicNet}`)
+  check('旧值 detail → 延迟（三网延迟块在）', dom.polylines === 3 * dom.cards, `polyline ${dom.polylines} / 卡 ${dom.cards}`)
+  check('旧值 detail → 延迟（不是经典：底部那行照样在、下面还挂着三网延迟）',
+    dom.netRow === 1 && dom.netGrid === 0 && dom.polylines > 0, `网络行 ${dom.netRow} / 四格 ${dom.netGrid}`)
   check('旧值 detail → 延迟（不发多次请求）', ping === 2, `实测 ${ping} 次`)
   check('旧值 detail → 延迟（不显示详细档的状态点与读数盒）', dom.dots === 0 && dom.infoBox === 0, `点 ${dom.dots} / 盒 ${dom.infoBox}`)
 }
 
-/* 5) 完全没有配置 / 非法值 → 回落经典 */
+/* 5) 完全没有配置 / 非法值 → 回落「简约」（1.1.0 起的默认档，与 theme.json 的 default 同口径） */
 for (const [cfg, tag] of [[{}, 'empty'], [{ cardStyle: 'bogus' }, 'bogus']]) {
   const { dom, ping } = await render(cfg, tag)
-  check(`非法值 ${tag} → 回落经典（含不发延迟请求）`,
-    dom.classicNet === 1 && dom.latencyRow === 0 && dom.infoBox === 0 && ping === 0,
-    `经典 ${dom.classicNet} / 行 ${dom.latencyRow} / 盒 ${dom.infoBox} / 请求 ${ping}`)
+  check(`非法值 ${tag} → 回落「简约」（含不发延迟请求）`,
+    dom.netRow === 1 && dom.netGrid === 0 && dom.infoBox === 0 && ping === 0,
+    `网络行 ${dom.netRow} / 四格 ${dom.netGrid} / 盒 ${dom.infoBox} / 请求 ${ping}`)
 }
 
 /* 6) 紧凑形态：一行一台的表格 */

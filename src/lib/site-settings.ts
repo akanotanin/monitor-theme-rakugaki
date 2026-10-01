@@ -25,10 +25,12 @@ export type ThemeConfig = {
    */
   farmUrl: string
   /**
-   * 卡片形态：classic = 网络两行、不含延迟；latency = 网络单行 + 三网延迟；detailed = 再加在线时长、
-   * 价格与到期；compact = 一行一台的表格（列随屏宽收放，密度最高）。
+   * 卡片形态：classic = 速率与总量各一行（2×2 四格）、不含延迟；plain = 网络合成一行，
+   * 读数那层另换一套视觉处理（标签提亮、条压细、底注变小）、不含延迟；latency = 网络一行 +
+   * 三网延迟；detailed = 再加在线时长、价格与到期；compact = 一行一台的表格（密度最高）。
+   * 默认是 plain（与 jikasei 1.11.2 同口径）。
    */
-  cardStyle: "classic" | "latency" | "detailed" | "compact"
+  cardStyle: "classic" | "latency" | "detailed" | "plain" | "compact"
   /**
    * 列表页顶部显示什么：none = 都不显示；groups = 分组标签行；summary = 概览卡片行（原版）；
    * budget = 概览卡片行（月度预算剩余价值版）；both = 分组标签行 + 原版概览卡片；
@@ -50,8 +52,9 @@ export const DEFAULTS: ThemeConfig = {
   // 「装主题」与「部署养鸡场」是两件事，站长没装就不该多出一枚点了没反应的图标；
   // 想固定指向别处（包括别人的公开那座）就填地址，想一律不显示就填 `off`。
   farmUrl: "",
-  // 默认「经典」：紧凑、不发延迟请求；想带三网延迟的在后台切「延迟」，机器多想一屏看全的切「紧凑」。
-  cardStyle: "classic",
+  // 默认「简约」：网络合成一行、读数那层标签提亮/条更细，和经典一样不发延迟请求。
+  // 想看老样子（速率与总量各一行）在后台切「经典」，要三网延迟的切「延迟」，机器多想一屏看全的切「紧凑」。
+  cardStyle: "plain",
   // 默认「都不显示」：这两行都是「一眼看全站」的补充，站点本来就有每台机器的卡片；
   // 关着时它们整个不挂载，首屏与没有这个功能时一模一样。
   listTop: "none",
@@ -71,7 +74,7 @@ export const DEFAULTS: ThemeConfig = {
 export function cardStyleOf(v: unknown): ThemeConfig["cardStyle"] {
   // ≤1.2.9 的值：那时候这一档叫「详细」，现在叫「延迟」——同一档，只是换了名字。
   if (v === "detail") return "latency"
-  if (v === "classic" || v === "latency" || v === "detailed" || v === "compact") return v
+  if (v === "classic" || v === "latency" || v === "detailed" || v === "plain" || v === "compact") return v
   return DEFAULTS.cardStyle
 }
 

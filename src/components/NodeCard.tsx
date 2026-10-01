@@ -203,17 +203,53 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
   /** 指针或键盘刚落到这张卡片上：先把手头这块 chunk（详情页的图表那 391KB）取回来。 */
   onWarm?: () => void
   latencyLines: string
-  cardStyle: "classic" | "latency" | "detailed"
+  cardStyle: "classic" | "latency" | "detailed" | "plain"
   /** 「详细」形态的服务器备注清单（每行 `服务器名=备注`）；空串 = 关闭。 */
   notes: string
 }) {
   const m = node.metrics
   // 详细档：图标、元信息行与三枚读数盒都只在它里面出现；配色仍与另外两档同一套灰。
   const detailed = cardStyle === "detailed"
+  // 简约档：读数格与经典是同一个骨架，只换一套视觉处理——表名提亮成前景色、进度条压细、
+  // 底注变小、格行距收紧、底部网络收成一行（见下方各处 plain 分支）。
+  const plain = cardStyle === "plain"
   // 备注只在「详细」档生效，且清单非空才算开——留空即关闭，这一档保持 1.5.0 的样子。
   const remark = detailed && hasNotes(notes)
   const price = priceText(node)
   const cycle = cycleText(node)
+
+  // 卡片底部那一行网络：简约 / 延迟两档共用**同一个节点**——一行两段，左边实时速率（墨色）、
+  // 右边累计总量（弱化灰），上面一条手画的分隔线；方向用文字 ↓ ↑ 而不是图标，这样整段能原样
+  // 复制成「↓ 88 B/s ↑ 312 B/s」。延迟档原本是「上下行各一组、组内用分隔点连起来」的两端式，
+  // 按要求与简约看齐后也改成这条；两档同一个节点，也是护栏里「逐项相同」那条等价断言的前提。
+  // `data-net` 是给护栏认这一行的锚点（改版后那两条旧判据——按 2×2 那格的类名、按分隔点那行——
+  // 都会失配，命中 0 反而看着像「本来就没有」）。
+  // ★ 这一行**必须允许折行**：本主题的读数走等宽字（JetBrains Mono），比 jikasei 那套 mono 栈宽
+  // 四成左右——同一批数据下 jikasei 那行只要 ~208px，这里要 ~293px，而 4 列（卡片 299px）里只有
+  // ~263px。不折行就两端各自被截成「↓ 3.8 KB/s ↑ 2.8 … / ↓ 7.47 GB ↑ 737…」（实测，见
+  // verify_card_styles 里那条「没有被截断」的断言）。折行后 4 列下是两行、3 列及更宽仍是一行。
+  const netRow = (
+    <div data-net="row" className="tnum mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t-[1.5px] border-dashed border-line-strong pt-4 text-xs">
+      <span className="truncate">{m ? `↓ ${rate(m.net_rx)} ↑ ${rate(m.net_tx)}` : "—"}</span>
+      <span className="truncate text-muted-foreground">{`↓ ${bytes(node.total_rx)} ↑ ${bytes(node.total_tx)}`}</span>
+    </div>
+  )
+
+  // 经典档底部＝**速率一行、总量一行的 2×2 四格**（与上面读数格同两条列），与上面那条
+  // 一行两段不是一回事。箭头同样是文字 ↓ ↑（不是图标，整段可原样复制）：速率那行的数值用前景色、
+  // 箭头与整行总量用弱化灰。它和简约档的差别只剩「一档是四格、一档是一行」与那几把视觉尺子。
+  const netGrid = (
+    <div data-net="grid" className="tnum mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t-[1.5px] border-dashed border-line-strong pt-4 text-xs">
+      <span>
+        <span className="text-muted-foreground">↓</span> {m ? rate(m.net_rx) : "—"}
+      </span>
+      <span>
+        <span className="text-muted-foreground">↑</span> {m ? rate(m.net_tx) : "—"}
+      </span>
+      <span className="text-muted-foreground">↓ {bytes(node.total_rx)}</span>
+      <span className="text-muted-foreground">↑ {bytes(node.total_tx)}</span>
+    </div>
+  )
 
   return (
     <Card
@@ -248,28 +284,36 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
         <>
           {detailed && <MetaRow node={node} notes={notes} remark={remark} />}
 
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
+          <div className={`mt-4 grid grid-cols-2 gap-x-4 ${plain ? "gap-y-3" : "gap-y-4"}`}>
             {/* The core count belongs beside the word CPU: it is what the
                 percentage and the load averages are both measured against. */}
             <Meter
+              plain={plain}
               icon={detailed ? Cpu : undefined}
-              label={`CPU ${node.cpu_cores} 核`}
+              // 简约档：表名提亮，只有那截「N 核」留在弱化灰里（间距用空格而不是 ml-*，
+              // 复制与读屏拿到的仍是「CPU 2 核」）。
+              label={plain
+                ? <>CPU <span className="text-muted-foreground">{node.cpu_cores} 核</span></>
+                : `CPU ${node.cpu_cores} 核`}
               pct={m ? m.cpu : null}
               foot={m ? m.load.map((n) => n.toFixed(2)).join(" ") : "—"}
             />
             <Meter
+              plain={plain}
               icon={detailed ? MemoryStick : undefined}
               label="内存"
               pct={m ? percent(m.mem_used, m.mem_total) : null}
               foot={m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total)}
             />
             <Meter
+              plain={plain}
               icon={detailed ? HardDrive : undefined}
               label="硬盘"
               pct={m ? percent(m.disk_used, m.disk_total) : null}
               foot={m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total)}
             />
             <Meter
+              plain={plain}
               icon={detailed ? ArrowDownUp : undefined}
               label="流量"
               pct={node.traffic_limit > 0 ? percent(monthUsage(node), node.traffic_limit) : null}
@@ -279,46 +323,17 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
           </div>
 
           {cardStyle === "classic" ? (
-            /* 经典形态：速率一行、总量一行，2×2；不含延迟，也就不发延迟请求。 */
-            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t-[1.5px] border-dashed border-line-strong pt-4 text-xs">
-              <span className="tnum inline-flex items-center gap-1.5">
-                <ArrowDown className="size-3 text-muted-foreground" />
-                {m ? rate(m.net_rx) : "—"}
-              </span>
-              <span className="tnum inline-flex items-center gap-1.5">
-                <ArrowUp className="size-3 text-muted-foreground" />
-                {m ? rate(m.net_tx) : "—"}
-              </span>
-              <span className="tnum inline-flex items-center gap-1.5 text-muted-foreground">
-                <ArrowDown className="size-3" />
-                {bytes(node.total_rx)}
-              </span>
-              <span className="tnum inline-flex items-center gap-1.5 text-muted-foreground">
-                <ArrowUp className="size-3" />
-                {bytes(node.total_tx)}
-              </span>
-            </div>
+            /* 经典形态：底部分速率一行、总量一行的 2×2 四格；不含延迟，也就不发延迟请求。 */
+            netGrid
+          ) : cardStyle === "plain" ? (
+            /* 简约形态：与经典同一批读数，底部收成一行两段（实时速率 + 累计总量）。 */
+            netRow
           ) : cardStyle === "latency" ? (
             <>
-              {/* 两个方向各一组、左右各占一端（下行在左、上行在右，与经典形态的读法一致），
-                  组内「实时速率 · 累计总量」用一枚分隔点连起来；颜色沿用原本一套：实时速率用
-                  前景色，累计总量与箭头、分隔点都用弱化灰。 */}
-              {/* 这一组紧接在上面的用量格之后，横线挪到它下面（见 Latency 的边框），
-                  由那条线把「速率 · 总量」与下面的三网延迟分开。 */}
-              <div className="mt-4 flex items-center justify-between gap-x-3 text-xs">
-                <span className="tnum inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <ArrowDown className="size-3 shrink-0 text-muted-foreground" />
-                  {m ? rate(m.net_rx) : "—"}
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-muted-foreground">{bytes(node.total_rx)}</span>
-                </span>
-                <span className="tnum inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <ArrowUp className="size-3 shrink-0 text-muted-foreground" />
-                  {m ? rate(m.net_tx) : "—"}
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-muted-foreground">{bytes(node.total_tx)}</span>
-                </span>
-              </div>
+              {/* 延迟档底部与「简约」是同一个 netRow 节点（版本对齐后不再各写一份），
+                  它自己的 border-t 把「用量格」与「速率·总量」分开；三网延迟那条线由
+                  LatencyPanel 自己画在下面。 */}
+              {netRow}
               {/* 三网延迟：每条线路一行，数据来自 hub 的 ping 历史（详见 Latency.tsx）。 */}
               <LatencyPanel node={node} lines={latencyLines} />
             </>
