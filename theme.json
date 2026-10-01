@@ -4,7 +4,7 @@
   "description": "极简探针（Monitor）的手绘纸感主题。",
   "version": "1.0.0",
   "author": "akanotanin",
-  "url": "",
+  "url": "https://github.com/akanotanin/monitor-theme-rakugaki",
   "config": [
     {
       "type": "title",
