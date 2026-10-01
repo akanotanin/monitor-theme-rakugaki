@@ -466,6 +466,148 @@ let classicStyle = null
   check('延迟：指定四条有效线路也只显示三条', dom.rows.join('/') === '北京电信/上海电信/广州电信', dom.rows.join('/'))
 }
 
+/* 2b) 延迟档右上角那枚「信息」控件：悬停 / 点击弹浮层，里面是备注 + 在线时间 + 价格 + 到期。
+   判据三件套：① 控件是原生 button + aria-expanded（不是静态文本，也不是装饰图标）；
+   ② 默认关闭时卡片与没有备注时**逐像素相同**（浮层不占位）；③ 悬停/点击/键盘都不会打开详情页
+   （卡片自己是 role=button），并带**对照组**证明这条判据不是恒真。 */
+const PEEK_PROBE = `JSON.stringify((() => {
+  const card = [...document.querySelectorAll('[role=button]')].find((c) => /CPU/.test(c.innerText))
+  if (!card) return { missing: true }
+  const btn = card.querySelector('[data-note-popover]')
+  const panel = card.querySelector('[data-note-panel]')
+  const rect = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.left), r: Math.round(b.right), mid: Math.round(b.top + b.height / 2), bottom: Math.round(b.bottom), w: Math.round(b.width), h: Math.round(b.height) } }
+  const grid = card.querySelector('.grid.grid-cols-2')
+  const cRect = card.getBoundingClientRect()
+  const h3 = card.querySelector('h3')
+  return {
+    cardH: Math.round(cRect.height),
+    cardTop: Math.round(cRect.top),
+    cardRight: Math.round(cRect.right),
+    cardBottom: Math.round(cRect.bottom),
+    gridTop: grid ? Math.round(grid.getBoundingClientRect().top - cRect.top) : null,
+    rowH: h3 ? Math.round(h3.parentElement.getBoundingClientRect().height) : null,
+    badges: card.querySelectorAll('[data-slot="badge"]').length,
+    nameClipped: h3 ? h3.scrollWidth > h3.clientWidth + 1 : null,
+    btn: btn ? { tag: btn.tagName, expanded: btn.getAttribute('aria-expanded'), ...rect(btn) } : null,
+    panel: panel ? { text: panel.innerText.replace(/\\n/g, ' | '), ...rect(panel) } : null,
+    path: location.pathname,
+    text: card.innerText.replace(/\\n/g, ' | '),
+  }
+})())`
+
+// 悬停那一步走真鼠标（CDP Input.dispatchMouseEvent）——比在页面里派发合成事件可信，
+// 也顺带证明 onPointerEnter/onPointerLeave 这套真的接上了。
+const hover = async (x, y) => {
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 })
+  await sleep(400)
+}
+const moveAway = async () => hover(4, 4)
+
+{
+  await render({ cardStyle: 'latency' }, 'peek-base')
+  const base = JSON.parse(await evalJS(PEEK_PROBE))
+  await render({ cardStyle: 'latency', serverNotes: '节点一=东京 · 三网优化,备用' }, 'peek-closed')
+  const closed = JSON.parse(await evalJS(PEEK_PROBE))
+  check('延迟+浮层：右上角有一枚原生 button 控件（aria-expanded=false，浮层默认不渲染）',
+    closed.btn?.tag === 'BUTTON' && closed.btn.expanded === 'false' && closed.panel === null,
+    JSON.stringify(closed.btn) + ' / 浮层 ' + (closed.panel ? '在' : '不在'))
+  // ★两个坐标别混用：btn.mid 是视口坐标，gridTop 是「相对卡片上沿」的偏移 —— 直接比会得出
+  // 「控件在读数格下面」这种假红（第一版就是这么写的）。要么都换成视口坐标，要么都换相对值。
+  // 判的是「贴着右上角」，不是「与内边距分毫不差」：卡片内边距 16px，两套皮肤实测 17 / 18px
+  // （皮肤自带描边与位移类），所以给到 3px 容差，别为这两像素去改代码。
+  check('延迟+浮层：控件贴在卡片右上角、且在读数格之上',
+    closed.btn !== null && Math.abs(closed.cardRight - closed.btn.r - 16) <= 3 && closed.btn.mid < closed.cardTop + closed.gridTop,
+    `卡右 ${closed.cardRight} / 控件右 ${closed.btn?.r}（差 ${closed.cardRight - (closed.btn?.r ?? 0)}px）/ 控件中线 ${closed.btn?.mid} vs 读数格上沿 ${closed.cardTop + closed.gridTop}`)
+  check('延迟+浮层：标题行不再挂备注胶囊（备注只在浮层里）', closed.badges === 0, `胶囊 ${closed.badges} 枚`)
+  check('延迟+浮层：默认状态与「没有备注」时逐像素相同（浮层不占位）',
+    closed.cardH === base.cardH && closed.gridTop === base.gridTop && closed.rowH === base.rowH,
+    `高 ${closed.cardH}/${base.cardH} 格上沿 ${closed.gridTop}/${base.gridTop} 行高 ${closed.rowH}/${base.rowH}`)
+  check('延迟+浮层：卡片正文里没有备注文字（没填备注的站点看不到任何痕迹）',
+    !closed.text.includes('三网优化') && !closed.text.includes('备用'), closed.text)
+  check('延迟+浮层：名字没被控件挤到截断', closed.nameClipped === false, `截断=${closed.nameClipped}`)
+
+  if (closed.btn) await hover(closed.btn.x + closed.btn.w / 2, closed.btn.mid)
+  const hovered = JSON.parse(await evalJS(PEEK_PROBE))
+  check('延迟+浮层：悬停即弹出（aria-expanded=true，浮层渲染出来）',
+    hovered.btn?.expanded === 'true' && hovered.panel !== null, JSON.stringify(hovered.btn))
+  const t = hovered.panel?.text ?? ''
+  check('延迟+浮层：浮层里备注列全（两枚胶囊都在）', t.includes('东京 · 三网优化') && t.includes('备用'), t)
+  check('延迟+浮层：浮层里有在线时间（口径同「详细」档）', /在线 4 天/.test(t), t)
+  check('延迟+浮层：浮层里有价格与计费周期', t.includes('¥12.50 / 月付'), t)
+  check('延迟+浮层：浮层里有到期（按 hub 的 expires_in 算）', t.includes('剩余 95 天'), t)
+  check('延迟+浮层：悬停不会跳详情页（仍在列表页）', hovered.path === '/', hovered.path)
+
+  await moveAway()
+  const away = JSON.parse(await evalJS(PEEK_PROBE))
+  check('延迟+浮层：鼠标移开就收起（回到与关闭态一致）',
+    away.panel === null && away.btn?.expanded === 'false' && away.cardH === closed.cardH,
+    `浮层 ${away.panel ? '在' : '不在'} / 高 ${away.cardH}/${closed.cardH}`)
+
+  // 点击：手机端没有悬停，这条路必须能开；且点它**不许**连带打开详情页。
+  const clickedPath = await evalJS(`(() => { const b = document.querySelector('[data-note-popover]'); if (!b) return 'no-btn'; b.click(); return location.pathname })()`)
+  await sleep(300)
+  const clicked = JSON.parse(await evalJS(PEEK_PROBE))
+  check('延迟+浮层：点一下就开（手机端的唯一入口）', clicked.panel !== null && clicked.btn?.expanded === 'true', JSON.stringify(clicked.btn))
+  check('延迟+浮层：点这枚控件不会打开详情页（仍在列表页）', clickedPath === '/' && clicked.path === '/', `点击那一刻 ${clickedPath} / 复测 ${clicked.path}`)
+  check('延迟+浮层：浮层不越出卡片（右沿与下沿都在卡片内）',
+    clicked.panel !== null && clicked.panel.r <= clicked.cardRight + 1 && clicked.panel.x >= 0,
+    `浮层 ${clicked.panel?.x}~${clicked.panel?.r} / 卡右 ${clicked.cardRight}`)
+
+  // 键盘：Escape 收起；Enter 冒泡不许把详情页打开（卡片自己是 role=button）。
+  const esc = await evalJS(`(() => {
+    const b = document.querySelector('[data-note-popover]')
+    b.focus()
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    return location.pathname
+  })()`)
+  await sleep(300)
+  const afterEsc = JSON.parse(await evalJS(PEEK_PROBE))
+  check('延迟+浮层：Escape 收起，且不跳详情页', afterEsc.panel === null && esc === '/' && afterEsc.path === '/', `浮层 ${afterEsc.panel ? '在' : '不在'} / ${esc}`)
+  const enterPath = await evalJS(`(() => {
+    const b = document.querySelector('[data-note-popover]')
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    return location.pathname
+  })()`)
+  await sleep(300)
+  const afterEnter = JSON.parse(await evalJS(PEEK_PROBE))
+  check('延迟+浮层：Enter 冒泡到控件上不会打开详情页', enterPath === '/' && afterEnter.path === '/', `${enterPath} / ${afterEnter.path}`)
+  // 对照组：同样的点击/Enter 打在**卡片本体**上确实会跳详情页（证明上面两条不是恒真）。
+  const cardClick = await evalJS(`(() => {
+    const c = [...document.querySelectorAll('[role=button]')].find((el) => /CPU/.test(el.innerText))
+    if (!c) return 'no-card'
+    c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    return location.pathname
+  })()`)
+  await sleep(400)
+  check('延迟+浮层：对照组——同样的 Enter 打在卡片本体上确实会跳详情页（判据不是恒真）',
+    typeof cardClick === 'string' && cardClick.startsWith('/node'), `卡片上 ${cardClick}`)
+}
+{
+  // 手机窄屏（390）：控件在、点得开、无横向溢出、浮层不越出卡片。
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 1200, deviceScaleFactor: 1, mobile: true })
+  await render({ cardStyle: 'latency', serverNotes: '节点一=东京 · 三网优化,备用' }, 'peek-mobile')
+  const before = JSON.parse(await evalJS(PEEK_PROBE))
+  await evalJS(`(() => { const b = document.querySelector('[data-note-popover]'); if (b) b.click(); return true })()`)
+  await sleep(300)
+  const after = JSON.parse(await evalJS(PEEK_PROBE))
+  const overflow = await evalJS(`document.documentElement.scrollWidth > document.documentElement.clientWidth`)
+  check('延迟+浮层（手机 390）：控件在、点得开、四段信息齐',
+    before.btn?.tag === 'BUTTON' && after.panel !== null && /在线 /.test(after.panel?.text ?? '') && (after.panel?.text ?? '').includes('剩余 95 天'),
+    after.panel?.text)
+  check('延迟+浮层（手机 390）：无横向溢出、浮层不越出卡片、名字不被挤断',
+    overflow === false && after.panel !== null && after.panel.r <= after.cardRight + 1 && after.nameClipped === false,
+    `溢出 ${overflow} / 浮层右 ${after.panel?.r} / 卡右 ${after.cardRight}`)
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1200, deviceScaleFactor: 1, mobile: false })
+}
+{
+  // 这枚控件只属于「延迟」档：详细档本来就有这些信息，经典/简约两档也不该冒出它。
+  for (const [cfg, tag] of [[{ cardStyle: 'detailed' }, 'peek-not-detailed'], [{ cardStyle: 'classic' }, 'peek-not-classic'], [{ cardStyle: 'plain' }, 'peek-not-plain']]) {
+    await render({ ...cfg, serverNotes: '节点一=东京 · 三网优化' }, tag)
+    const dom = JSON.parse(await evalJS(PEEK_PROBE))
+    check(`浮层控件只在延迟档：${cfg.cardStyle} 档上没有它`, dom.btn === null && dom.panel === null, JSON.stringify(dom.btn))
+  }
+}
+
 /* 3) 详细（新档） */
 {
   const { dom, ping } = await render({ cardStyle: 'detailed' }, 'detailed')
