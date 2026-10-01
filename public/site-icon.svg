@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="rakugaki">
+  <!-- 手绘风的主题标记：一页歪歪扭扭的纸 + 一条陶土色的走势线。
+       笔画刻意画得不平（每段控制点都偏一点），放大看才是「手画的」。
+       深色模式下靠 CSS 覆盖 stroke/fill；这张图主要给顶栏那张 PNG 当源。 -->
+  <g fill="none" stroke="#141413" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 11.2 C 26 9.8, 40 12.2, 52 11 C 53.6 10.9, 54.6 12, 54.4 13.6 C 55.2 26, 53.4 40, 54 51.2 C 54.1 52.8, 53 53.8, 51.4 53.6 C 38 54.8, 24 52.9, 12.6 54 C 11 54.1, 10 53, 10.2 51.4 C 10.9 39, 9.5 26, 10.4 13 C 10.6 11.5, 11.2 11, 12 11.2 Z"/>
+    <path d="M18 21 C 24 20.2, 30 22, 38 20.9"/>
+  </g>
+  <g fill="none" stroke="#d97757" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 38 C 21 29, 25 44, 29 35 C 32 28, 33 38, 36 36 C 39 34, 40 33, 42 34"/>
+  </g>
+  <circle cx="47.5" cy="32.5" r="3.2" fill="#d97757"/>
+</svg>

@@ -1,0 +1,369 @@
+/* Scan this app's own source and nothing else. Tailwind's automatic detection
+   walks the whole repository, turning a word in a Rust file or a document into a
+   utility class in the shipped stylesheet: `.filter` and `.transform` were
+   here because api.rs calls `.filter(...)`. Worse than the wasted bytes, it
+   made the build depend on files that have nothing to do with it -- adding an
+   unrelated workflow changed the CSS, and with it the content hash of every
+   asset. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ 字体
+   拉丁子集随主题包分发（离线可用：不联 Google Fonts、不依赖访客机器装了什么）。
+   中日韩字形不打包——一套完整 CJK 字面要好几 MB，主题包会从 5MB 涨到 30MB 以上，
+   而各家系统自带的黑体／宋体／楷体本来就够看，所以字体栈的后半段一律写系统字体：
+   拉丁走包里这三款，汉字落到 PingFang SC / 微软雅黑 / 楷体。
+
+   四款各司其职：Newsreader（衬线，标题）／Instrument Sans（正文）／
+   JetBrains Mono（数字读数——小票上的那排等宽数字）／Caveat（手写小注）。 */
+@font-face { font-family: "Newsreader"; src: url("/fonts/newsreader-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+
+:root {
+  /* ---- 纸与墨：整套配色的根。ccrouter.app 那一套手绘纸感——米白纸面、近黑墨线、
+     陶土色点缀、硬偏移的影子（不是模糊阴影），边框用手写感的歪圆角而不是标准圆角。 */
+  --paper: #faf9f5;
+  --paper-warm: #f0eee6;
+  --elev: #ffffff;
+  --ink: #141413;
+  --ink-2: #3d3d3a;
+  --ink-3: #5e5d59;
+  --ink-4: #87867f;
+  /* 墨线：真正的描边色。--line / --line-strong 是它的淡版本（虚线、分隔用）。 */
+  --stroke: #141413;
+  --line: rgba(20, 20, 19, .14);
+  --line-strong: rgba(20, 20, 19, .3);
+  --accent: #d97757;
+  --accent-2: #c4633f;
+  --accent-ink: #a94f32;
+  --accent-soft: rgba(217, 119, 87, .14);
+  --on-accent: #141413;
+  /* 六色便签：卡片硬影子的颜色（一张卡一个色，像贴了一叠彩纸）。 */
+  --fill-oat: #e3dacc;
+  --fill-cactus: #bcd1ca;
+  --fill-heather: #cbcadb;
+  --fill-coral: #ebcece;
+  --fill-butter: #f2d59b;
+  --fill-sky: #c8daeb;
+  --tape: rgba(227, 218, 204, .9);
+  --grid: rgba(20, 20, 19, .045);
+  --ok: #4f7a42;
+  --warn: #9a7020;
+  --shadow-card: 6px 6px 0 var(--fill-oat);
+  --shadow-pop: 9px 9px 0 var(--fill-oat);
+
+  /* 歪圆角：四个角半径互不相同，看着像手画的框。名字沿用 ccrouter 的那几档。
+     数值看着夸张，但 CSS 会把它们按比例压到不超过盒子尺寸，所以同一组值在小胶囊上
+     是「叶子形」、在大卡片上是「微歪的方框」——正是要的这个效果。 */
+  --r-sketch: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  --r-sketch-alt: 15px 225px 15px 255px / 255px 15px 225px 15px;
+  --r-card: 18px 220px 16px 200px / 200px 16px 220px 18px;
+  --r-card-alt: 200px 16px 220px 18px / 18px 220px 16px 200px;
+  --r-chip: 120px 10px 110px 12px / 12px 110px 10px 120px;
+  --r-chip-alt: 10px 120px 12px 110px / 110px 12px 120px 10px;
+  --r-blob: 50% 44% 52% 46% / 46% 52% 44% 50%;
+  --r-bar: 5px 12px 7px 10px / 10px 7px 12px 5px;
+
+  /* 手绘波浪线：一条 10px 高的墨线，用 mask 重复成波浪（导航底边、区块分隔）。 */
+  --squiggle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='10' viewBox='0 0 240 10'%3E%3Cpath d='M0 5 C 40 1, 80 9, 120 5 S 200 9, 240 5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+
+  /* 字体栈：拉丁走包里那四款，汉字落到系统字体（见上面 @font-face 那段）。
+     源变量另起名字（--family-*）再映射到 Tailwind 的 --font-* 命名空间——直接写
+     --font-* 会与 @theme 撞名，`@theme inline` 里再写一次就成了自己引用自己的死循环。 */
+  --family-display: "Newsreader", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, serif;
+  --family-sans: "Instrument Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --family-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "Sarasa Mono SC", "Microsoft YaHei UI", monospace;
+  /* 手写体只用于「手写小注」那一层：拉丁走 Caveat，汉字落到系统的楷体（Windows 的
+     楷体／macOS、iOS 的 Kaiti SC），两边都读得出这是「手写的」。 */
+  --font-hand: "Caveat", "Kaiti SC", "KaiTi", "STKaiti", "AR PL UKai CN", cursive;
+
+  --radius: 0.625rem;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--elev);
+  --card-foreground: var(--ink);
+  --popover: var(--elev);
+  --popover-foreground: var(--ink);
+  /* 主色是那枚陶土橙：主按钮、选中的页签、图表里的强调线都用它。
+     压在它上面的字用墨色而不是白色——橙底白字的对比度不够（ccrouter 也是这么配的）。 */
+  --primary: var(--accent);
+  --primary-foreground: var(--on-accent);
+  --secondary: var(--paper-warm);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-warm);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--paper-warm);
+  --accent-foreground: var(--ink);
+  --destructive: #b84a32;
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--accent);
+  /* 九色调色板：曲线要用几组同时可分辨的线，单色阶在三组以上就只剩深浅。
+     这一版刻意把色相往「纸上颜料」那边压（蓝／陶土／青／紫／砖红／橄榄／蓝青／
+     赭黄／品红），饱和度比默认主题低一档——米白纸面上高饱和的线会显得是另一个界面的。
+     亮色下压亮度保证可读，深色下抬亮度，色相不变，所以同一台机器在两种主题下是同一种颜色。 */
+  --chart-1: #3f6ea8;
+  --chart-2: #c4633f;
+  --chart-3: #2f8a7a;
+  --chart-4: #7a5aa8;
+  --chart-5: #b23a48;
+  --chart-6: #4f8a3a;
+  --chart-7: #2c7fa6;
+  --chart-8: #b8862b;
+  --chart-9: #a64a80;
+}
+
+.dark {
+  --paper: #1f1e1d;
+  --paper-warm: #2a2825;
+  --elev: #262624;
+  --ink: #f0eee6;
+  --ink-2: #d1cfc5;
+  --ink-3: #a8a69d;
+  --ink-4: #87867f;
+  --stroke: #e8e6dc;
+  --line: rgba(240, 238, 230, .12);
+  --line-strong: rgba(240, 238, 230, .28);
+  --accent: #e08b6e;
+  --accent-2: #ea9c80;
+  --accent-ink: #efa489;
+  --accent-soft: rgba(224, 139, 110, .16);
+  --on-accent: #141413;
+  /* 暗色下的便签色：同样的六个色相，压成「暖夜的纸」，硬影子因此仍看得见但不刺眼。 */
+  --fill-oat: #3a3630;
+  --fill-cactus: #34463f;
+  --fill-heather: #3a3a4c;
+  --fill-coral: #4a3634;
+  --fill-butter: #6b5a33;
+  --fill-sky: #2f4050;
+  --tape: rgba(135, 125, 108, .55);
+  --grid: rgba(240, 238, 230, .04);
+  --ok: #8db57c;
+  --warn: #d6ae5c;
+  --destructive: #e0837a;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--elev);
+  --card-foreground: var(--ink);
+  --popover: var(--elev);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: var(--on-accent);
+  --secondary: var(--paper-warm);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-warm);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--paper-warm);
+  --accent-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--accent);
+  /* 与亮色同一份色相，只抬亮度：深色底上压暗的线会糊在一起。 */
+  --chart-1: #7ea6d8;
+  --chart-2: #e0916a;
+  --chart-3: #6bc0ae;
+  --chart-4: #ae93d8;
+  --chart-5: #e08390;
+  --chart-6: #8fc76f;
+  --chart-7: #6fb8d8;
+  --chart-8: #dcb55e;
+  --chart-9: #d98fbe;
+}
+
+/* outline-ring/50 这类工具类要能解析到 --color-ring，所以颜色映射照旧走 @theme inline。 */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  /* 这一套是本主题自己的：墨线、纸、六色便签、陶土色的两个深档。 */
+  --color-stroke: var(--stroke);
+  --color-paper: var(--paper);
+  --color-paper-warm: var(--paper-warm);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-oat: var(--fill-oat);
+  --color-cactus: var(--fill-cactus);
+  --color-heather: var(--fill-heather);
+  --color-coral: var(--fill-coral);
+  --color-butter: var(--fill-butter);
+  --color-sky: var(--fill-sky);
+  --color-tape: var(--tape);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-9: var(--chart-9);
+  --font-display: var(--family-display);
+  --font-sans: var(--family-sans);
+  --font-mono: var(--family-mono);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  /* Reserve the scrollbar's width on every page: without it, leaving a route
+     whose content exceeds the fold widens the page. */
+  /* 字体在这里显式落到 html 上，不靠 Tailwind 的 --default-font-family：@theme inline
+     把 --font-sans 直接内联进了工具类，那枚变量本身不一定还被输出，preflight 里的
+     `var(--default-font-family)` 就有落空的风险。 */
+  html { font-family: var(--family-sans); scrollbar-gutter: stable; }
+  body {
+    @apply bg-background text-foreground;
+    /* 极淡的点阵＝纸的纹理。它只在卡片之间的缝里和顶栏后面露出来，压得很低
+       （--grid 的 alpha 是 .045）——再重一点就会跟卡片的描边抢注意力。 */
+    background-image: radial-gradient(var(--grid) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  ::selection { background: var(--fill-butter); color: var(--ink); }
+}
+
+/* 等宽数字让每两秒刷一次的数字不左右跳；顺带把「读数」这一层变成小票上的那排等宽字
+   （JetBrains Mono），汉字落到系统黑体。 */
+.tnum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------- 手绘元素（本主题的底子）
+   这一层刻意**不放进 @layer**：未分层规则在层叠顺序上高于 Tailwind 的分层工具类，
+   所以卡片上的 `border` / `rounded-xl` 这类工具类不会把描边与歪圆角盖掉。 */
+
+/* 墨线分隔：一条手画的波浪线（导航底边、区块之间）。 */
+.sk-rule {
+  height: 10px;
+  background: var(--line-strong);
+  -webkit-mask: var(--squiggle) repeat-x left center / 240px 10px;
+  mask: var(--squiggle) repeat-x left center / 240px 10px;
+}
+.sk-rule-ink { background: var(--stroke); }
+/* 波浪线压得更窄的那一档（区块里的小分隔）。 */
+.sk-rule-sm { height: 8px; -webkit-mask-size: 160px 8px; mask-size: 160px 8px; }
+
+/* 卡片：2px 墨线描边 + 歪圆角 + 硬偏移影子（没有模糊——手绘贴纸的边缘是实的）。
+   影子只有一种颜色：状态页上卡片十张起步，一张一个色会变成噪声（试过六色轮换，
+   一屏四张就已经「颜色不统一」了）。手写的味道靠**歪圆角**与下一行那条奇偶交错来给。 */
+.sk-card {
+  border: 2px solid var(--stroke);
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.sk-card:nth-child(2n) { border-radius: var(--r-card-alt); }
+/* 可点的卡片：悬停时轻轻歪一下、抬起来一点——纸片被捏起来的感觉。 */
+.sk-lift:hover { transform: translate(-1px, -1px) rotate(-.6deg); border-color: var(--accent-2); }
+.sk-lift:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+
+/* 按钮：歪圆角 + 2px 墨线。悬停往左上挪 1px 并长出一枚硬影子，按下再压回去。
+   ★这里**不写 background**：底色由调用处的工具类给（bg-primary / bg-destructive /
+   bg-elev）——未分层规则会盖掉分层工具类，写在 `.sk-btn` 里等于把这些变体一起作废
+   （实测过一次：危险按钮整片变成纸白）。 */
+.sk-btn {
+  border: 2px solid var(--stroke);
+  border-radius: var(--r-sketch);
+  color: var(--ink);
+  transition: transform .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+.sk-btn:hover { transform: translate(-1px, -1px) rotate(-.6deg); box-shadow: 4px 4px 0 var(--fill-oat); }
+.sk-btn:active { transform: translate(1px, 1px); box-shadow: none; }
+/* 顶栏那排图标按钮：圆润的墨线团（--r-blob 是四个角各不相同的椭圆），悬停转一下。 */
+.sk-icon {
+  border: 1.5px solid var(--stroke);
+  border-radius: var(--r-blob);
+  background: transparent;
+  color: var(--ink);
+  transition: transform .15s ease, background-color .15s ease;
+}
+.sk-icon:hover { transform: rotate(-6deg); background: var(--paper-warm); }
+@media (prefers-reduced-motion: reduce) {
+  .sk-btn:hover, .sk-icon:hover, .sk-lift:hover { transform: none; }
+}
+
+/* 标签胶囊：**只给圆角与悬停**，描边与底色由调用处的工具类给。
+   ★同样不能在这里写 border / background：未分层规则会盖掉 `bg-butter`（选中态）与
+   `border-dashed`（读数盒），实测过一次——分组标签的选中态整片看不出是选中的。 */
+.sk-chip {
+  border-radius: var(--r-chip);
+  transition: transform .15s ease, background-color .15s ease;
+}
+/* 奇偶换一版圆角，一排胶囊因此不是同一枚模具压出来的。
+   ★这个类只给**真的待在一排里**的胶囊（分组标签、页签、徽标、读数盒）：
+   它按 nth-child 选，谁落在偶数位谁就被换掉——顶栏那三枚图标按钮就吃过这个亏
+   （第二枚的墨线团被换成了胶囊形，同一排里两枚长得不一样，verify_farm_entry 抓到的）。
+   所以图标按钮只带 .sk-icon，不带 .sk-chip。 */
+.sk-chip:nth-child(2n) { border-radius: var(--r-chip-alt); }
+.sk-chip:hover { transform: rotate(-1deg); }
+/* 选中的那一枚（分组标签、页签、范围）：多一枚小硬影子，像被按在纸上的贴纸。
+   光靠黄油色在深色下不够醒目——深色的便签色本来就压得暗。 */
+.sk-chip-on { box-shadow: 2px 2px 0 var(--stroke); }
+
+/* 进度条：一条手画的墨线槽 + 里面一段实心墨。空槽用纸的暖色，满槽是墨—— 
+   和「一支笔在格子里涂满」同一个意思。 */
+.sk-bar {
+  border: 1.5px solid var(--stroke);
+  border-radius: var(--r-bar);
+  background: var(--paper-warm);
+  overflow: hidden;
+}
+.sk-bar-fill { background: var(--stroke); transition: width .5s ease; }
+/* 流量条是唯一一条会用完的额度：超过 80% 转成陶土橙，提醒该看一眼了。
+   其余三条（CPU / 内存 / 硬盘）保持纯墨色——它们的「满」与额度不同义。 */
+.sk-bar-hot .sk-bar-fill { background: var(--accent-2); }
+
+/* 顶栏：纸面半透明 + 模糊，底边一条手画波浪线（原先那条 border-b 换成它）。 */
+.sk-nav { background: color-mix(in srgb, var(--paper) 86%, transparent); }
+.sk-nav::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -5px;
+  height: 10px;
+  background: var(--line-strong);
+  -webkit-mask: var(--squiggle) repeat-x left center / 240px 10px;
+  mask: var(--squiggle) repeat-x left center / 240px 10px;
+  pointer-events: none;
+}
+
+/* 顶栏那枚站标：36px 的白底小方块 + 1.5px 墨线 + 9px 圆角（ccrouter 的 brand-mark）。 */
+.sk-mark {
+  border: 1.5px solid var(--stroke);
+  border-radius: 9px;
+  background: var(--elev);
+}
+
+/* 手写小注（空状态、「剩余价值」那类口径提示）。 */
+.sk-hand { font-family: var(--font-hand); color: var(--accent-ink); }

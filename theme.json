@@ -1,0 +1,78 @@
+{
+  "name": "rakugaki",
+  "short": "rakugaki",
+  "description": "极简探针（Monitor）的手绘纸感主题。",
+  "version": "1.0.0",
+  "author": "akanotanin",
+  "url": "",
+  "config": [
+    {
+      "type": "title",
+      "label": "顶栏"
+    },
+    {
+      "type": "string",
+      "key": "siteIcon",
+      "label": "站点图标",
+      "default": "/site-icon.png",
+      "help": "站名左边那枚方标的地址，也是浏览器标签页与书签的图标。"
+    },
+    {
+      "type": "string",
+      "key": "farmUrl",
+      "label": "养鸡场入口",
+      "default": "",
+      "help": "留空＝自动探测本站 /chicken/；填 off＝不显示入口；填地址＝指向别处（同域路径或完整网址）。"
+    },
+    {
+      "type": "title",
+      "label": "列表与卡片"
+    },
+    {
+      "type": "select",
+      "key": "listTop",
+      "label": "列表页顶部",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "都不显示" },
+        { "value": "groups", "label": "只显示分组标签" },
+        { "value": "summary", "label": "只显示概览卡片·原版" },
+        { "value": "budget", "label": "只显示概览卡片·价值版" },
+        { "value": "both", "label": "两个都显示·概览卡片原版" },
+        { "value": "bothBudget", "label": "两个都显示·概览卡片价值版" }
+      ],
+      "help": "分组标签 = 全部 / 各组那一行；概览卡片 = 那行统计卡片，分原版与月度预算剩余价值版两种排法。"
+    },
+    {
+      "type": "select",
+      "key": "cardStyle",
+      "label": "卡片形态",
+      "default": "classic",
+      "options": [
+        { "value": "classic", "label": "经典：网络速率与总量分两行，不含延迟" },
+        { "value": "latency", "label": "延迟：网络合成一行，下方带三网延迟" },
+        { "value": "detailed", "label": "详细：在延迟之上再加在线时长、价格与到期" },
+        { "value": "compact", "label": "紧凑：一行一台的表格，密度最高" }
+      ],
+      "help": "经典＝网络两行；延迟＝网络一行加三网延迟；详细＝再加时长与计费；紧凑＝一行一台的表格，列随屏宽收放，一屏看全。"
+    },
+    {
+      "type": "text",
+      "key": "serverNotes",
+      "label": "服务器备注",
+      "default": "",
+      "help": "每行一台，写成「服务器名=备注1,备注2,备注3」，名字要和卡片上的一致；留空＝关闭，开启后卡片会多出备注标签，仅对详细形态起效。"
+    },
+    {
+      "type": "title",
+      "label": "三网延迟"
+    },
+    {
+      "type": "text",
+      "key": "pingLines",
+      "label": "显示的延迟线路",
+      "default": "",
+      "help": "每行一个 ping 任务名，最多三条；留空自动取前三条。"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- 中性灰 + 一枚陶土色：favicon 落在浏览器自己的底色上（浅色/深色都可能），
+       所以主笔画不能是近黑的墨色，否则在深色浏览器栏里会消失。 -->
+  <g fill="none" stroke="#8a8a8a" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 2.6 C 6.5 2.3, 10 3, 13 2.7 C 13.4 2.7, 13.7 3, 13.6 3.4 C 13.8 6.6, 13.4 10.2, 13.5 12.9 C 13.5 13.3, 13.2 13.6, 12.8 13.5 C 9.5 13.8, 6 13.3, 3.2 13.6 C 2.8 13.6, 2.5 13.3, 2.6 12.9 C 2.7 10, 2.4 6.6, 2.6 3.3 C 2.6 2.9, 2.8 2.6, 3 2.6 Z"/>
+  </g>
+  <g fill="none" stroke="#d97757" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.3 9.6 C 5.3 7.4, 6.3 10.9, 7.3 8.9 C 8 7.2, 8.2 9.5, 9 9 C 9.7 8.5, 10 8.3, 10.5 8.5"/>
+  </g>
+  <circle cx="11.9" cy="8" r="0.9" fill="#d97757"/>
+</svg>
