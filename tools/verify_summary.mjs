@@ -117,7 +117,16 @@ const ONCE_ONLY = {
   nodes: [base(1, '买断机', { online: true, price: 300, currency: 'CNY', billing_cycle: 'once', expires_in: 200 })],
 }
 
-const VARIANTS = { mixed: MIXED, down: ALL_DOWN, tied: TIED, free: NO_PRICE, exotic: EXOTIC, once: ONCE_ONLY }
+/* 长读数夹具（第 11 组断言用）：概览行那两列数字的宽度上限 */
+// 62.2 KB/s ↓ / 112.6 KB/s ↑ —— 这一档的机位（640 / 1280）是卡片栅格刚换列数的两处，
+// 也正是 4 位数读数会被截掉几像素的地方。
+const LONG_KB = { nodes: [base(1, 'Node A', { online: true, day_rx: 1.25 * GB, day_tx: 0.75 * GB, metrics: metrics({ cpu: 12.5, net_rx: 62.2 * KB, net_tx: 112.6 * KB }) })] }
+// bytes(n, 1) 在 [100, 1024) 档给一位小数 → 「1023.9 KB/s」是 KB 档最长的那串。
+const MAX_KB = { nodes: [base(1, 'Node A', { online: true, metrics: metrics({ cpu: 12.5, net_rx: 1023.9 * KB, net_tx: 1023.9 * KB }) })] }
+// MB 档同理：1023.9 MB/s（≈1 GB/s）。
+const MAX_MB = { nodes: [base(1, 'Node A', { online: true, metrics: metrics({ cpu: 12.5, net_rx: 1023.9 * MB, net_tx: 1023.9 * MB }) })] }
+
+const VARIANTS = { mixed: MIXED, down: ALL_DOWN, tied: TIED, free: NO_PRICE, exotic: EXOTIC, once: ONCE_ONLY, long: LONG_KB, maxkb: MAX_KB, maxmb: MAX_MB }
 
 let config = {}
 let variant = 'mixed'
@@ -219,6 +228,11 @@ const PROBE = `JSON.stringify((() => {
         innerCol: inner ? Math.round(inner.getBoundingClientRect().left) : null,
         // 主数字那个盒子带 truncate：真装不下时 scrollWidth 会大于 clientWidth。
         clip: num ? num.scrollWidth - num.clientWidth : 0,
+        // 主数字那行是两列小栅格时，两个格子里各自的截断量——栅格自己不溢出，格子里的
+        // truncate 会静默把「1023.9 KB/s」变省略号，只看上面那个 clip 是看不见的。
+        cellClip: num && num.children.length === 2
+          ? [...num.children].map((v) => { const t = v.querySelector('.truncate') || v; return t.scrollWidth - t.clientWidth })
+          : null,
         foot: fr ? Math.round(fr.bottom) : null,
       }
     })
@@ -358,8 +372,8 @@ let classicNet = null
     tile(dom, '最忙节点').text === '最忙节点 | 51.0% | Node B', tile(dom, '最忙节点').text)
   check('原版：今日流量卡：今日 1.25 GB ↓ / 768 MB ↑，总流量 3.50 TB ↓ / 2.25 TB ↑',
     tile(dom, '今日流量').text === '今日流量 | 1.25 GB | 768 MB | 总流量 | 3.50 TB | 2.25 TB', tile(dom, '今日流量').text)
-  check('原版：实时网速卡 = 在线且有指标的节点之和（20.5 MB/s ↓ / 40.1 MB/s ↑）',
-    tile(dom, '实时网速').text === '实时网速 | 20.5 MB/s | 40.1 MB/s', tile(dom, '实时网速').text)
+  check('原版：实时网速卡 = 在线且有指标的节点之和（20.5 → 21 MB/s ↓ / 40.125 → 40 MB/s ↑）',
+    tile(dom, '实时网速').text === '实时网速 | 21 MB/s | 40 MB/s', tile(dom, '实时网速').text)
   check('原版：页面上没有月度预算 / 剩余价值（新功能没被顺手带出来）',
     !dom.body.includes('月度预算') && !dom.body.includes('剩余价值'))
   classicDay = tile(dom, '今日流量').text
@@ -541,6 +555,25 @@ let classicNet = null
   const none = await render({ showSummary: false, showGroupTabs: false }, 'legacy-none')
   check('旧键迁移：两个旧键都关 → 两个都不显示', none.tiles.length === 0 && !none.body.includes('未分组'),
     `概览 ${none.tiles.length} 张 / 分组行 ${none.body.includes('未分组')}`)
+}
+
+/* 11) 长读数：概览行那两列数字的宽度上限 */
+// 这一行是 `grid grid-cols-2` + `truncate`，每格的文字框 = 格宽 − 箭头与间距（16px）。
+// 本皮肤的四列从 xl(1280) 起、两列从 sm(640) 起 —— 换列的那两档格子最窄，4 位数的
+// 读数（1023.9 KB/s 需 106px）实测在 640 与 1280 被截 9px / 2px，其余机位放得下。
+// 所以机位取 640 / 768 / 1024 / 1100 / 1280 / 1440，三种长读数各跑一遍。
+{
+  const netRows = (dom) => ['今日流量', '实时网速'].map((n) => ({ n, clip: tile(dom, n).blocks[0].cellClip ?? [], text: tile(dom, n).blocks[0].text }))
+  for (const [v, label] of [['long', '62.2 KB/s / 112.6 KB/s'], ['maxkb', '1023.9 KB/s ×2'], ['maxmb', '1023.9 MB/s ×2']]) {
+    for (const w of [640, 768, 1024, 1100, 1280, 1440]) {
+      await send('Emulation.setDeviceMetricsOverride', { width: w, height: 1000, deviceScaleFactor: 1, mobile: w < 700 })
+      const dom = await render({ listTop: 'summary' }, `net-${v}-${w}`, v)
+      const rows = netRows(dom)
+      check(`长读数·${label} @${w}：两格里的大数都没被截断`,
+        rows.every((r) => r.clip.length === 2 && r.clip.every((c) => c <= 0)),
+        rows.map((r) => `${r.n} ${r.text} 截断${JSON.stringify(r.clip)}`).join('；'))
+    }
+  }
 }
 
 ws.close()
