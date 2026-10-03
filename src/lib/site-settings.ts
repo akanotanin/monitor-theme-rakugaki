@@ -39,15 +39,30 @@ export type ThemeConfig = {
   listTop: "none" | "groups" | "summary" | "budget" | "both" | "bothBudget"
   /** 卡片「三网延迟」要显示的线路，按名字指定（ping 任务名），一行一个。 */
   pingLines: string
-  /**
-   * 「服务器备注」清单：每行一台，`服务器名=备注`（逗号分隔 = 多枚标签；`#` 开头的行是注释）。空串 = 关闭。
-   * 非空即开启，三种形态各按自己的位置排：
-   *  · 「详细」卡片——标题行右端的一排胶囊，卡片其余部分不动（第二行仍是「在线时长 / 价格」、
-   *    第三枚读数盒下面仍是到期日）；空间不够时先压标签，名字保持原宽。
-   *  · 「延迟」卡片——收在右上角那枚信息图标里（悬停/点开看备注、在线时间、价格与到期）。
-   *  · 「紧凑」卡片——收在展开行量程栏右端那枚图标里（同样悬停/点开看）。
-   */
-  serverNotes: string
+  /** 「备注显示位置」：备注小卡片摊在哪儿（卡片 / 整页详情 / 两边都摊 / 都不显示）。 */
+  remarkPlacement: RemarkPlacement
+}
+
+/** 「备注显示位置」：`both` 卡片与详情页（默认）/ `card` 只在卡片 / `detail` 只在整页详情 / `none` 都不显示。 */
+export type RemarkPlacement = "both" | "card" | "detail" | "none"
+
+/** 四档取值（`normalizeConfig` 认这四样，别的都回落到 `both`）。 */
+export const REMARK_PLACEMENTS: RemarkPlacement[] = ["both", "card", "detail", "none"]
+
+/**
+ * 卡片那一侧（含「紧凑」就地展开行、经典/延迟右上角那枚浮层、详细档标题行）要不要摊备注。
+ * 与 `remarksOnDetail` 是一对，两处合起来恰好覆盖「备注的落点」那四档口径。
+ *
+ * ★写成**白名单**（只认 `both`/`card`）而不是「不等于 detail」：后者在新增第四档「都不显示」时会
+ * 悄悄把卡片侧漏开（备注没关掉），是那种「看着改了、其实没生效」的坏实现。
+ */
+export function remarksOnCards(p: RemarkPlacement): boolean {
+  return p === "both" || p === "card"
+}
+
+/** 整页详情（点进去那一页）要不要摊备注。同样写成白名单。 */
+export function remarksOnDetail(p: RemarkPlacement): boolean {
+  return p === "both" || p === "detail"
 }
 
 export const DEFAULTS: ThemeConfig = {
@@ -65,10 +80,8 @@ export const DEFAULTS: ThemeConfig = {
   // 延迟线路：留空 = 按后台顺序自动显示前几条；填了名字就只显示这些（一行一个）。
   // 名字是 ping 任务的名字，不是节点名——对不上的行会被跳过。
   pingLines: "",
-  // 备注清单：留空 = 关闭——三种形态都保持原样（详细：标题行右端不挂标签、第二行仍是「在线时长 /
-  // 价格」、第三枚读数盒下面仍是到期日；延迟 / 紧凑：那个位置不出现那枚图标）。
-  // 这是默认，没填过备注的站点不该被这次改动改变观感。
-  serverNotes: "",
+  // 备注显示位置：默认两边都摊（与 1.19.1 同口径）。
+  remarkPlacement: "both",
 }
 
 /**
@@ -139,46 +152,15 @@ function farmEntryOf(s: Record<string, unknown>): string {
   return DEFAULTS.farmUrl
 }
 
-/**
- * 「服务器备注」清单里这台机器的标签。逐行读 `服务器名=备注`，`#` 开头的行是注释；
- * 名字按去掉首尾空白后逐字匹配节点名。同一台写多行时后面一行覆盖前面。
- *
- * 备注里用逗号分隔＝多枚标签（半角 `,` 与全角 `，` 都认，两侧空白削掉、空片段丢掉）：
- * `东京机=三网优化,备用` 在卡片上是两枚胶囊，而不是一枚写着「三网优化,备用」的。
- * 没有匹配、或值里全是空片段，都返回空数组。
- *
- * 放在这里（而不是 NodeCard）是因为它是纯函数：能脱开 React 单测，改起来不怕漏。
- */
-export function tagsFor(notes: string, name: string): string[] {
-  let found: string[] = []
-  for (const raw of notes.split("\n")) {
-    const line = raw.trim()
-    if (!line || line.startsWith("#")) continue
-    const at = line.indexOf("=")
-    if (at <= 0) continue
-    if (line.slice(0, at).trim() !== name) continue
-    // 后一行覆盖前一行——包括「后一行写成空值」这种就是「这台不要标签」。
-    found = splitTags(line.slice(at + 1))
-  }
-  return found
-}
-
-/** 备注值 → 标签列表：逗号（半角 / 全角）分隔，削首尾空白、丢掉空片段。 */
-function splitTags(value: string): string[] {
-  return value
-    .split(/[,，]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-}
-
-/** 备注功能开没开：清单非空即开。留空 = 关闭，三种形态（详细 / 延迟 / 紧凑）都保持原样。 */
-export function hasNotes(notes: string): boolean {
-  return notes.trim() !== ""
-}
 
 /**
  * 收窄 Hub 存回来的设置。逐项收窄类型：Hub 存的是自由 JSON，站长清空输入框可能留下空串或 null，
  * 直接展开会让一个空串把默认图标顶掉。
+ *
+ * 备注本身不在这一层：它由 hub 按节点下发——「公开备注」给访客、「私有备注」只给登录的管理员
+ * （见 `@/lib/notes`）；这一层只管「备注显示位置」（摊在哪儿）。老站点配置里若还留着 1.15.x 那份「服务器备注」
+ * 清单，它只是 Hub 站点配置里一个没人读的键（Hub 保存的是整对象，删字段不会去动已存的键）——
+ * 无害，也不会再渲染出任何东西。
  */
 export function normalizeConfig(saved: unknown): ThemeConfig {
   const s = (saved && typeof saved === "object" ? saved : {}) as Record<string, unknown>
@@ -194,7 +176,9 @@ export function normalizeConfig(saved: unknown): ThemeConfig {
     listTop: listTopOf(s.listTop, { showSummary: s.showSummary, showGroupTabs: s.showGroupTabs }),
     // 留空是有意义的值（= 自动取前几条），空串不能当「没填过」；只有类型不对时才回落。
     pingLines: typeof s.pingLines === "string" ? s.pingLines : DEFAULTS.pingLines,
-    // 同理：备注清单的空串是有意义的值（= 关闭备注）。
-    serverNotes: typeof s.serverNotes === "string" ? s.serverNotes : DEFAULTS.serverNotes,
+    // 「备注显示位置」只认那四档；老站点配置里没有这个键（或写成别的）→ 两边都摊。
+    remarkPlacement: REMARK_PLACEMENTS.includes(s.remarkPlacement as RemarkPlacement)
+      ? (s.remarkPlacement as RemarkPlacement)
+      : DEFAULTS.remarkPlacement,
   }
 }

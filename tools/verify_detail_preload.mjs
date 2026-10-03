@@ -20,7 +20,12 @@ const ONLY = process.argv[4] || ''
 if (!UPSTREAM) { console.error('用法：node tools/verify_detail_preload.mjs <上游 hub 地址> [节点id] [只跑哪个用例:1|2|3]'); process.exit(2) }
 
 const PORT = 5310 + Math.floor(Math.random() * 200)
-const server = spawn('node', ['tools/serve.mjs', String(PORT), '{}', '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
+// ★站点配置要**自己钉住**，不能用 `'{}'` 让伺服转给上游：`serve.mjs` 只在 config 非空时自己回答
+// `/api/themes/<short>/config`，空对象会一直问到真 hub —— 而真 hub 上这个主题的存档配置可能是
+// `cardStyle: "compact"`（列表是一张表），于是 `cardBox()` 抓到的是一行表格，点它是**就地展开**
+// 而不是跳详情页，用例 3 那条路根本不会发生（实测：骨架 0px、详情标题取不到，看着像主题坏了）。
+// 这里给一份确定的配置，这一档的判据才只由代码决定。
+const server = spawn('node', ['tools/serve.mjs', String(PORT), '{"cardStyle":"plain","listTop":"none"}', '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
 let serverLog = ''
 server.stdout.on('data', (d) => { serverLog += d })
 server.stderr.on('data', (d) => { serverLog += d })

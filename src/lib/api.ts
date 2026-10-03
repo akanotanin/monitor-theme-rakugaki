@@ -31,6 +31,12 @@ export type Node = {
   country: string
   /** Set by the operator; empty is ungrouped. Absent from a hub predating groups. */
   group?: string
+  /**
+   * 站长在后台写给访客的一行说明（单行、≤100 字，留空是空串）。hub 1.3.2 起随**公开视图**
+   * 一起下发，所以匿名也拿得到——与最下面那个私有的 `remark` 不是一回事。老 hub 没有这个 key。
+   * 这是访客可见的那条备注（见 `@/lib/notes`）：主题这边没有备注设置项，只读 hub 下发的字段。
+   */
+  public_remark?: string | null
   last_seen: number
   metrics: Metrics | null
   os: string

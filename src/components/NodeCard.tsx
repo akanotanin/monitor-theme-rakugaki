@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react"
 import {
-  ArrowDown, ArrowDownUp, ArrowUp, CalendarClock, Cpu, HardDrive, MemoryStick, Info,
+  ArrowDown, ArrowDownUp, ArrowUp, CalendarClock, Cpu, HardDrive, Lock, MemoryStick, Info,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -9,7 +9,8 @@ import { LatencyPanel } from "@/components/Latency"
 import { Meter } from "@/components/Meter"
 import type { Node } from "@/lib/api"
 import { CYCLES, FOREVER, bytes, daysUntil, money, pair, percent, rate, uptime } from "@/lib/format"
-import { hasNotes, tagsFor } from "@/lib/site-settings"
+import { remarkChips, type RemarkChip } from "@/lib/notes"
+import { remarksOnCards, type RemarkPlacement } from "@/lib/site-settings"
 
 /**
  * This period's usage as the plan meters it. The hub computes it; the switch
@@ -166,15 +167,41 @@ function trafficFoot(node: Node) {
     : `${bytes(monthUsage(node))} / ${FOREVER}`
 }
 
-export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes }: {
+/**
+ * 备注小卡片：**私有那几枚带锁 + 描边**（仅自己可见），公有那几枚实心 `secondary`。
+ * 卡片（详细档标题行、经典/延迟的浮层）与整页详情、紧凑展开行共用这一套——写法只有一处，
+ * 合并后的次序（私有在前、公有在后）也由 `@/lib/notes` 的 `remarkChips` 一处决定。
+ */
+export function RemarkChips({ chips, max = "full", keep = false }: { chips: RemarkChip[]; max?: string; keep?: boolean }) {
+  return (
+    <>
+      {chips.map((c, i) => (
+        <Badge
+          key={i + "-" + c.text}
+          variant={c.own ? "outline" : "secondary"}
+          // keep（详细档标题行那一格）：小卡片保持自然宽度、不许被挤扁 —— 否则四枚会各自缩成
+          // 「仅自…」这种两个字的残片（实测踩过）。放不下的部分由外层裁掉、在悬浮层里看全。
+          className={(keep ? "shrink-0 " : "min-w-0 shrink ") + "font-normal " + (c.own ? "gap-1 text-muted-foreground" : "")}
+          style={{ maxWidth: max === "full" ? undefined : max }}
+          title={c.own ? "仅自己可见：" + c.text : c.text}
+        >
+          {c.own && <Lock className="size-3 shrink-0" aria-hidden />}
+          <span className="min-w-0 truncate">{c.text}</span>
+        </Badge>
+      ))}
+    </>
+  )
+}
+
+export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, remarkPlacement }: {
   node: Node
   onOpen: () => void
   /** 指针或键盘刚落到这张卡片上：先把手头这块 chunk（详情页的图表那 391KB）取回来。 */
   onWarm?: () => void
   latencyLines: string
   cardStyle: "classic" | "latency" | "detailed" | "plain"
-  /** 服务器备注清单（每行 `服务器名=备注`）；空串 = 关闭。三种形态共用这一份。 */
-  notes: string
+  /** 「备注显示位置」：`detail` 时卡片这一侧一枚都不摊（整页详情照旧，见 NodeDetail）。 */
+  remarkPlacement?: RemarkPlacement
 }) {
   const m = node.metrics
   // 详细档：图标、元信息行与三枚读数盒都只在它里面出现；配色仍与另外两档同一套灰。
@@ -182,17 +209,24 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
   // 简约档：读数格与经典是同一个骨架，只换一套视觉处理——表名提亮成前景色、进度条压细、
   // 底注变小、格行距收紧、底部网络收成一行（见下方各处 plain 分支）。
   const plain = cardStyle === "plain"
-  // 三种形态的备注各落一处：「详细」在标题行右端、「延迟」在右上角浮层里、
-  // 「紧凑」在展开行的量程栏那枚图标里；清单非空才算开。
-  const noteTags = hasNotes(notes) ? tagsFor(notes, node.name) : []
+  // 这台机器的公开备注（见 @/lib/notes）：hub 后台按节点填的那条，逗号分隔＝多枚小卡片。
+  // 这台机器的备注（见 @/lib/notes）：私有在前（仅自己可见）、公有在后，都拆成一枚枚小卡片。
+  // 备注那一串：先按「备注显示位置」判这一侧要不要摊，再交给 @/lib/notes 拆（私有在前、公有在后）。
+  const chips = remarksOnCards(remarkPlacement ?? "both") ? remarkChips(node) : []
   /**
-   * 「延迟」档右上角那枚信息控件：悬停或点击弹出浮层，里面是**备注 + 在线时间 + 价格 + 到期**。
-   * 「延迟」档本来不写这些（它们原来只有「详细」档有），浮层让它们按需出现，卡片本身
-   * 一个像素都不为此让位——关闭时与没有备注、没有这枚控件时逐像素相同。
+   * 「经典」「延迟」两档右上角那枚信息控件：悬停或点击弹出浮层，里面是
+   * **备注（写了才有）+ 在线时间 + 价格 + 到期**。
+   *
+   * 这两档本来不写这些（它们原来只有「详细」档有），浮层让它们按需出现；控件本身只有 20px、
+   * 挂在标题行右端，卡片其余部分一个像素都不为它让位。★这两档**常驻**这枚控件（站长 2026-10-03 定的）：
+   * 没写备注的机器点开也能看到在线时间/价格/到期——不然那几项在这两档上根本无处可看。
    */
-  const peek = cardStyle === "latency"
+  const peek = cardStyle === "classic" || cardStyle === "latency"
   const [peekOpen, setPeekOpen] = useState(false)
   const peekRef = useRef<HTMLSpanElement>(null)
+  // 「详细」档标题行那一格：悬停弹悬浮层，把放不下的备注看全（只有这一档有，另两档收在 ⓘ 里）。
+  const [titlePeek, setTitlePeek] = useState(false)
+  const titlePeekRef = useRef<HTMLSpanElement>(null)
   // 钉住（点开）之后点别处要能收起；点卡片别的地方会跳详情页，所以只在浮层外按下时收。
   useEffect(() => {
     if (!peekOpen) return
@@ -265,27 +299,47 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
       <div className="flex min-w-0 items-center gap-2">
         <Country node={node} />
         <h3 className="font-display min-w-0 truncate text-[15px] font-semibold tracking-[-.01em]">{node.name}</h3>
-        {/* 「详细」档的备注：挂在**标题行右端**——名字下面那一行、读数格、三枚读数盒一概不动
-            （改版前它会把价格挤进读数盒、把到期日藏起来，那套重排已经取消）。
-            ★名字优先：名字那格照旧（可截断），标签这格给宽度上限（窄屏 40%、≥sm 55%）+ 极高的可压缩度
-            `[flex-shrink:100]` —— 空间不够时**先把标签压掉、名字保持原宽**，标签自己逐枚截断。 */}
-        {detailed && noteTags.length > 0 && (
-          <span className="ml-auto flex min-w-0 max-w-[40%] items-center justify-end gap-1 overflow-hidden [flex-shrink:100] sm:max-w-[55%]">
-            {noteTags.map((tag, i) => (
-              <Badge
-                key={`${i}-${tag}`}
-                variant="secondary"
-                className="min-w-0 max-w-[9rem] shrink font-normal text-muted-foreground"
-                title={tag}
+        {/* 「详细」档的备注：挂在**标题行右端**——名字下面那一行、读数格、
+            三枚读数盒一概不动（早先那套「把价格挤进读数盒、把到期日藏起来」的重排已经取消）。
+            写法与 hub 那两个字段一致：逗号分隔＝多枚，一枚一枚各自成卡片（私有那条按换行也拆）。
+            ★名字优先：名字那格照旧（可截断），备注这格 `grow basis-0` —— flex 基准尺寸是 0，
+            所以它**从不参与「谁先被压」的竞争**：名字先拿满自己内容需要的宽度，剩下的才给备注，
+            备注拿到多少由容器余量与上限（窄屏 40%、≥sm 55%）决定，不够就自己截断。
+            早先写的是「两边都让一点 + 备注 [flex-shrink:100]」：那在手机 390 + 长名字时仍会让
+            名字少 2px 并被截断（护栏实测 175 → 173px），因为 shrink 是按「收缩系数 × 基准尺寸」
+            分摊的，只要备注有基准尺寸就会分走一点。
+            ★「经典」档不挂在这里：它与「延迟」档一样把备注收进右上角那枚浮层（见下面那个控件）。
+            「紧凑」档收在展开行量程栏那格（见 NodeDetail）。 */}
+        {detailed && chips.length > 0 && (
+          /* 「详细」档的备注：**只占一行**（零行高、名字不受影响），放不下的部分裁在边缘外，
+             鼠标移到这一格上弹悬浮层看全（多枚、完整文字）。★悬浮层必须挂在这个**没有 overflow-hidden**
+             的外层上，否则会被裁掉看不见；内层才是那条会裁的一行。 */
+          <span
+            ref={titlePeekRef}
+            className="relative ml-auto flex min-w-0 max-w-[40%] grow basis-0 items-center justify-end sm:max-w-[55%]"
+            onPointerEnter={() => setTitlePeek(true)}
+            onPointerLeave={() => setTitlePeek(false)}
+          >
+            {/* ★`justify-start`（不是 end）：右对齐时溢出会往**左**跑，被裁掉的就成了排在最前面的
+                私有那枚——而它是站长最想一眼看到的；左对齐则是尾巴被裁，前几枚完整。 */}
+            <span data-remark="title" className="flex min-w-0 items-center justify-start gap-1 overflow-hidden">
+              <RemarkChips chips={chips} max="9rem" keep />
+            </span>
+            {titlePeek && (
+              <span
+                data-remark-panel
+                className="absolute right-0 top-5 z-20 flex w-max max-w-[18rem] flex-wrap justify-end gap-1 rounded-md border bg-popover px-2 py-1.5 shadow-md"
               >
-                <span className="min-w-0 truncate">{tag}</span>
-              </Badge>
-            ))}
+                <RemarkChips chips={chips} />
+              </span>
+            )}
           </span>
         )}
-        {/* 「延迟」档右上角的信息控件（悬停/点击弹浮层：备注 · 在线时间 · 价格 · 到期）。
+        {/* 「经典」「延迟」两档右上角的信息控件（悬停/点击弹浮层：备注 · 在线时间 · 价格 · 到期）。
             卡片自己是 role=button，所以点击与 Enter/空格都要拦在控件里，别让它冒泡成「打开详情页」；
-            浮层挂在同一个 relative 容器内，鼠标从图标移到浮层上不会把它关掉。 */}
+            浮层挂在同一个 relative 容器内，鼠标从图标移到浮层上不会把它关掉。
+            ★ 这两档常驻这枚控件（20px，挂在标题行右端）：没写备注时它照样在，
+            点开是在线时间/价格/到期；「详细」档不挂它——那几项本来就在卡面上写着。 */}
         {peek && (
           <span
             ref={peekRef}
@@ -309,19 +363,11 @@ export function NodeCard({ node, onOpen, onWarm, latencyLines, cardStyle, notes 
                 data-note-panel=""
                 className="absolute right-0 top-6 z-20 block w-56 space-y-1.5 rounded-md border bg-popover px-3 py-2.5 text-xs shadow-md"
               >
-                {/* 备注：一行一枚胶囊（逗号分隔的多枚也就排成多枚），没有备注的机器不占这一行。 */}
-                {noteTags.length > 0 && (
-                  <span className="flex min-w-0 flex-wrap items-center gap-1">
-                    {noteTags.map((tag, i) => (
-                      <Badge
-                        key={`${i}-${tag}`}
-                        variant="secondary"
-                        className="min-w-0 max-w-full shrink font-normal text-muted-foreground"
-                        title={tag}
-                      >
-                        <span className="min-w-0 truncate">{tag}</span>
-                      </Badge>
-                    ))}
+                {/* 公开备注：一枚一枚小卡片（逗号分隔的多枚也就排成多枚），
+                    没有备注的机器不占这一行。浮层是这一档唯一能读到它的地方（卡片上不占位）。 */}
+                {chips.length > 0 && (
+                  <span data-note-remark="" className="flex min-w-0 flex-wrap items-center gap-1">
+                    <RemarkChips chips={chips} />
                   </span>
                 )}
                 <span className="flex items-center justify-between gap-2">

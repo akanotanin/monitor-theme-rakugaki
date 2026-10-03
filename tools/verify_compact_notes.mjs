@@ -18,9 +18,14 @@ const CDP_PORT = PORT + 4400
 mkdirSync(SHOT_DIR, { recursive: true })
 
 const GB = 1024 ** 3
+// 备注的来源：1.19.0 起只有 hub 后台按节点填的字段（站点配置里那份「服务器备注」清单已删）——
+// 这里用「公开备注」（给访客），所以夹具把这一条挂在节点上、由下面各个用例改它；
+// 私有备注（只下发给登录的管理员）与合并后的版式在 tools/verify_public_remark.mjs 里验。
+let noteOnNode1 = ''
 const NODES = [
   {
     id: 1, name: '节点一', sort: 1, public: true, online: true, country: 'JP', group: '',
+    public_remark: noteOnNode1,
     last_seen: Math.floor(Date.now() / 1000) - 5,
     metrics: {
       cpu: 13, mem_used: 1 * GB, swap_used: 0, disk_used: 10 * GB, net_rx: 0, net_tx: 0,
@@ -60,7 +65,9 @@ const server = createServer((req, res) => {
     if (path === '/api/me') body = { authed: false, github: false, public_page: true, site: `http://127.0.0.1:${PORT}`, site_name: '紧凑备注校验' }
     // ★形状是 `{nodes:[…]}` 而不是裸数组：App 那边是 `api<{nodes:Node[]}>('/nodes')`，
     // 喂裸数组会让 `safeNodes(undefined)` 当场 `.map` 崩掉（整页只剩一行 TypeError 文案）。
-    else if (path === '/api/nodes') body = { nodes: NODES }
+    // ★公开备注要在**每次请求时**读 noteOnNode1：写进 NODES 字面量里的话，构造那一刻就把
+    //   值拷走了，后面各用例改它不会生效（踩过：标签带一个都不渲染）。
+    else if (path === '/api/nodes') body = { nodes: NODES.map((n) => (n.id === 1 ? { ...n, public_remark: noteOnNode1 } : n)) }
     else if (path.endsWith('/config')) body = config
     else if (path === '/api/version') body = { version: '1.3.0' }
     else if (/^\/api\/nodes\/\d+\/metrics/.test(path)) {
@@ -188,6 +195,7 @@ const PROBE = `JSON.stringify((() => {
   }
 })())`
 
+noteOnNode1 = ''
 const first = await renderAndExpand({ cardStyle: 'compact' }, '无备注')
 const none = JSON.parse(await evalJS(PROBE))
 if (none.missing) {
@@ -203,8 +211,9 @@ check('无备注：展开区里既没有标签带、也没有那枚备注图标'
   JSON.stringify({ strip: none.hasStrip, btn: none.hasBtn }))
 
 /* ── 2) PC（1440）：备注**直接并排显示**在「完整详情 ›」左边，且不新增行高 ────── */
-const NOTES = '节点一=测试测试,222,333'
-await renderAndExpand({ cardStyle: 'compact', serverNotes: NOTES }, '有备注·PC')
+const NOTES = '测试测试,222,333'
+noteOnNode1 = NOTES
+await renderAndExpand({ cardStyle: 'compact' }, '有备注·PC')
 const desk = JSON.parse(await evalJS(PROBE))
 check('PC：三枚备注直接显示（标签带可见，不是浮层）',
   desk.stripVisible === true && desk.stripBadges.join('|') === '测试测试|222|333',
@@ -221,7 +230,8 @@ check('PC：展开区高度与无备注时逐像素相同（并排显示也不�
 check('PC：没有横向溢出', desk.overflowX === false, '')
 
 /* ── 3) PC 六枚长备注：不撑高、不越界，「完整详情 ›」仍在 ─────────────────── */
-await renderAndExpand({ cardStyle: 'compact', serverNotes: `节点一=${Array.from({ length: 6 }, (_, i) => `标签${i + 1}号`).join(',')}` }, '六枚')
+noteOnNode1 = Array.from({ length: 6 }, (_, i) => `标签${i + 1}号`).join(',')
+await renderAndExpand({ cardStyle: 'compact' }, '六枚')
 const many = JSON.parse(await evalJS(PROBE))
 check('PC（六枚）：展开区高度不变、不横向溢出', many.boxH === none.boxH && many.overflowX === false, `高 ${many.boxH}/${none.boxH}`)
 check('PC（六枚）：标签带不越出卡片、「完整详情 ›」仍可见',
@@ -229,7 +239,8 @@ check('PC（六枚）：标签带不越出卡片、「完整详情 ›」仍可�
   `标签带右 ${many.stripBox?.r} / 完整详情左 ${many.detailLeft}`)
 
 /* ── 4) 手机 390：那一行放不下，收成图标 + 浮层 ─────────────────────────── */
-const r390 = await renderAndExpand({ cardStyle: 'compact', serverNotes: NOTES }, '手机', 390, 1200)
+noteOnNode1 = NOTES
+const r390 = await renderAndExpand({ cardStyle: 'compact' }, '手机', 390, 1200)
 const mobClosed = JSON.parse(await evalJS(PROBE))
 check('手机 390：标签带不显示、那枚图标显示（两套形态按断点分开）',
   mobClosed.stripVisible === false && mobClosed.iconVisible === true && mobClosed.btnTag === 'BUTTON',
@@ -277,23 +288,49 @@ const still = await evalJS(`(() => {
   check('手机 390：点那枚图标只摊浮层，不会把这一行收起来、也不跳页',
     j.rowExpanded === 'true' && j.panel === true && j.path === '/', still) }
 
-/* ── 9) 整页详情也挂同一枚（同一组件、非 embedded 模式） ───────────────── */
-config = { pingLines: '北京电信', cardStyle: 'compact', serverNotes: NOTES }
+/* ── 9) 整页详情那一块备注归「备注显示位置」管（1.19.1 起默认两边都摊） ─────────────
+   ★这一条在 1.17/1.18 那两版里断言的是「整页详情一个备注元素都没有」（当时站长的口径是详情页不摊备注）。
+   1.19.0 起口径翻面：卡片与详情页摊的是同一串「私有 + 公有」合并备注（见 tools/verify_public_remark.mjs 的
+   合并用例与「备注显示位置」四档矩阵），所以这里改成**两个方向**——默认（both）这一页要摊出来，
+   设成「只在卡片」（card）这一页才一枚都不摊。
+   ★原先那组选择器（`[data-note-strip]` / `[data-public-remark]`）在换成合并小卡片之后一个都命中不了，
+   加上正文里找的那句话（'三网优化'）根本不在这个夹具的备注里 —— 那条断言会「看着在跑、其实恒真」。 */
+noteOnNode1 = NOTES
+/** 整页详情那一块：按结构锚点 `[data-remark-block]` 定位（别认 Tailwind 类名，换皮肤不该动护栏）。 */
+const DETAIL_PROBE = `JSON.stringify((() => {
+  const b = document.querySelector('[data-remark-block]')
+  return {
+    path: location.pathname,
+    block: !!b,
+    chips: b ? [...b.querySelectorAll('[data-slot="badge"]')].map((x) => x.innerText.trim()) : [],
+    mentions: document.body.innerText.includes('测试测试') && document.body.innerText.includes('333'),
+  }
+})())`
+config = { pingLines: '北京电信', cardStyle: 'compact' }
 await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
 await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/node/1` })
-// 详情页默认落在「资源」页签、桩里那条序列是空的（没有图）——所以只等那枚图标，
-// 别把「有图」也写进等待条件（否则这一条会假红）。
-const detailOk = await waitFor(`(() => !!document.querySelector('[data-note-strip]'))()`, 40000)
-const detailDiag = await evalJS(`(() => {
-  const strip = document.querySelector('[data-note-strip]')
-  return JSON.stringify({
-    path: location.pathname,
-    stripVisible: !!strip && getComputedStyle(strip).display !== 'none',
-    texts: strip ? [...strip.querySelectorAll('[data-slot="badge"]')].map((b) => b.innerText.trim()) : [],
-  })
-})()`)
-check('整页详情（/node/1）上备注同样直接显示（同一份清单、同一落点）',
-  detailOk === true && JSON.parse(detailDiag).stripVisible === true && JSON.parse(detailDiag).texts.length === 3, `${detailDiag}`)
+// 等的是「详情页真的画出来了」（规格格出来），不是等那一块备注——没备注时它本来就不在，
+// 拿它当等待条件会在否定用例里一路等到超时，然后报出「页面没起来」这种假诊断。
+const detailOk = await waitFor(`(() => !!document.querySelector('dl'))()`, 40000)
+// 备注那一块要等一次 /api/themes/<short>/config 回来才挂（配置没到就采样会把「还没到」当成「没摊」）。
+const t0 = Date.now()
+const appeared = await waitFor(`(() => !!document.querySelector('[data-remark-block]'))()`, 8000)
+const configMs = Date.now() - t0
+const dBoth = JSON.parse(await evalJS(DETAIL_PROBE))
+check('整页详情（默认两边都摊）：备注那一块摊出来了、逐枚同序',
+  detailOk === true && appeared === true && dBoth.path === '/node/1' && dBoth.block === true
+    && dBoth.chips.join('|') === NOTES.split(',').join('|'),
+  `${JSON.stringify(dBoth)}（等配置 ${configMs}ms）`)
+
+config = { pingLines: '北京电信', cardStyle: 'compact', remarkPlacement: 'card' }
+await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/node/1` })
+const detailOk2 = await waitFor(`(() => !!document.querySelector('dl'))()`, 40000)
+// 同一个夹具、同一条路径，只换了配置里这一档；否定用例等的时间不短于刚才那一块真出现所用时间。
+await sleep(configMs + 800)
+const dCard = JSON.parse(await evalJS(DETAIL_PROBE))
+check('整页详情（只在卡片）：这一页一枚都不摊、正文里也没有备注文字',
+  detailOk2 === true && dCard.block === false && dCard.chips.length === 0 && dCard.mentions === false,
+  JSON.stringify(dCard))
 
 /* ── 10) 控制台无报错 ────────────────────────────────────────────────── */
 check('整轮下来控制台 0 报错', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' / '))

@@ -7,10 +7,18 @@ import { SummaryCards } from "@/components/Summary"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, groupsOf, useNodes, type Node } from "@/lib/api"
+import type { RemarkPlacement } from "@/lib/site-settings"
 import { DEFAULTS, FARM_OFF, hasGroupTabs, hasSummary, isBudgetLayout, useLocalFarm, useSiteFavicon, useThemeConfig } from "@/lib/theme-config"
 import { FarmIcon } from "@/components/FarmIcon"
 
-type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean }
+type Me = {
+  authed: boolean
+  github: boolean
+  site_name: string
+  public_page: boolean
+  /** hub 的历史保留天数（1~365，1.3.2 起默认 30）。老 hub 不给：时间范围按 7 天算（@/lib/ranges）。 */
+  history_days?: number
+}
 
 // The tab title cache key, shared with the inline script in index.html. Kept as the
 // theme's own key so two themes on one origin cannot fight over it.
@@ -321,9 +329,9 @@ export default function App() {
             <DetailSkeleton />
           ) : selected ? (
             <Suspense fallback={<DetailSkeleton />}>
-              {/* 整页详情与紧凑展开里是同一个组件：备注清单也要一起给它，
-                  否则「展开里有、点进去没有」会显得不一致。 */}
-              <NodeDetail node={selected} notes={config.serverNotes} />
+              {/* 整页详情与紧凑展开里是同一个组件：保留天数也要一起给它，
+                  否则「展开里有 30 天、点进去只有 7 天」会显得不一致。 */}
+              <NodeDetail node={selected} historyDays={me.history_days} remarkPlacement={config.remarkPlacement} />
             </Suspense>
           ) : (
             <p className="sk-hand py-16 text-center text-base">
@@ -353,7 +361,8 @@ export default function App() {
             <NodeList nodes={sorted} group={group} onGroup={setGroup} onOpen={go} onWarm={warmDetail} showTabs={hasGroupTabs(config.listTop)}
               latencyLines={config.pingLines}
               cardStyle={config.cardStyle}
-              notes={config.serverNotes} />
+              historyDays={me.history_days}
+              remarkPlacement={config.remarkPlacement} />
           </>
         )}
       </main>
@@ -392,7 +401,7 @@ function SiteIcon({ src, onSettle }: { src: string; onSettle: (icon: string | nu
 // without groups keeps the page it always had. The operator can also keep the
 // row off outright (theme setting `listTop`), which leaves the page as one
 // flat list.
-function NodeList({ nodes, group, onGroup, onOpen, onWarm, showTabs, latencyLines, cardStyle, notes }: {
+function NodeList({ nodes, group, onGroup, onOpen, onWarm, showTabs, latencyLines, cardStyle, historyDays, remarkPlacement }: {
   nodes: Node[]
   /** null is every node, "" the ungrouped. */
   group: string | null
@@ -405,8 +414,10 @@ function NodeList({ nodes, group, onGroup, onOpen, onWarm, showTabs, latencyLine
   latencyLines: string
   /** 卡片形态：compact = 一行一台的表格；detailed = 在延迟形态上再加在线时长与元信息；latency 网络单行 + 延迟；classic 速率与总量各一行、无延迟；plain 与经典同一批读数、只换一套视觉处理。 */
   cardStyle: "classic" | "latency" | "detailed" | "plain" | "compact"
-  /** 「详细」形态的服务器备注清单（每行 `服务器名=备注`）；空串 = 关闭。 */
-  notes: string
+  /** hub 的历史保留天数：透给「紧凑」形态展开行里那块详情图（时间范围那排按钮按它生成）。 */
+  historyDays?: number
+  /** 主题设置里的「备注显示位置」：卡片那一侧要不要摊备注（见 @/lib/site-settings）。 */
+  remarkPlacement: RemarkPlacement
 }) {
   const groups = groupsOf(nodes)
   const ungrouped = nodes.filter((n) => !n.group).length
@@ -449,11 +460,11 @@ function NodeList({ nodes, group, onGroup, onOpen, onWarm, showTabs, latencyLine
       {nodes.length === 0 ? (
         <p className="sk-hand py-16 text-center text-base">还没有节点</p>
       ) : cardStyle === "compact" ? (
-        <CompactList nodes={shown} onOpen={onOpen} onWarm={onWarm} notes={notes} />
+        <CompactList nodes={shown} onOpen={onOpen} onWarm={onWarm} historyDays={historyDays} remarkPlacement={remarkPlacement} />
       ) : (
         <div className={`grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 ${cardStyle === "detailed" ? "" : "xl:grid-cols-4"}`}>
           {shown.map((n) => (
-            <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} latencyLines={latencyLines} cardStyle={cardStyle} notes={notes} />
+            <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} latencyLines={latencyLines} cardStyle={cardStyle} remarkPlacement={remarkPlacement} />
           ))}
         </div>
       )}

@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react"
 import { Country, deployed, monthUsage } from "@/components/NodeCard"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Node } from "@/lib/api"
+import type { RemarkPlacement } from "@/lib/site-settings"
 import { FOREVER, CYCLES, bytes, daysUntil, money, osName, pair, percent, rate } from "@/lib/format"
 
 /**
@@ -129,7 +130,7 @@ function useSpan(): number {
 }
 
 /** 展开行里那块：整页详情的延迟图就地渲染；从没接入的机器没有历史可画，写一句话带过。 */
-function Expanded({ node, span, onOpenDetail, notes }: { node: Node; span: number; onOpenDetail: () => void; notes: string }) {
+function Expanded({ node, span, onOpenDetail, historyDays, remarkPlacement }: { node: Node; span: number; onOpenDetail: () => void; historyDays?: number; remarkPlacement?: RemarkPlacement }) {
   return (
     <tr className="bg-paper-warm/40">
       {/* 展开行要跨满当前看得见的列数：colSpan 得跟着断点走（见 useSpan），写死一个数会
@@ -138,7 +139,7 @@ function Expanded({ node, span, onOpenDetail, notes }: { node: Node; span: numbe
         <div className="border-t-[1.5px] border-dashed border-line-strong px-4 py-3">
           {deployed(node) ? (
             <Suspense fallback={<Skeleton className="h-72" />}>
-              <NodeDetail node={node} embedded onOpenDetail={onOpenDetail} notes={notes} />
+              <NodeDetail node={node} embedded onOpenDetail={onOpenDetail} historyDays={historyDays} remarkPlacement={remarkPlacement} />
             </Suspense>
           ) : (
             <p className="py-6 text-center text-sm text-muted-foreground">还没有接入。在后台生成安装命令并执行一次。</p>
@@ -149,16 +150,18 @@ function Expanded({ node, span, onOpenDetail, notes }: { node: Node; span: numbe
   )
 }
 
-function Row({ node, span, open, onToggle, onOpenDetail, onWarm, notes }: {
+function Row({ node, span, open, onToggle, onOpenDetail, onWarm, historyDays, remarkPlacement }: {
   node: Node
   span: number
   open: boolean
   onToggle: () => void
   onOpenDetail: () => void
-  /** 服务器备注清单，展开时透给那块延迟图。 */
-  notes: string
+  /** hub 的保留天数，展开时透给那块延迟图（时间范围那排按钮按它生成）。 */
+  historyDays?: number
   /** 摸到这一行就先取详情那块 chunk（与卡片同一个回调，见 App 的 warmDetail）。 */
   onWarm?: () => void
+  /** 「备注显示位置」：展开行那格也算「卡片」那一侧（见 @/lib/site-settings）。 */
+  remarkPlacement?: RemarkPlacement
 }) {
   const m = node.metrics
   // CPU 是 hub 直接给的百分比；内存、硬盘、流量都要自己按 used/total 算。流量按套餐口径
@@ -239,13 +242,13 @@ function Row({ node, span, open, onToggle, onOpenDetail, onWarm, notes }: {
           <Bar pct={traffic} />
         </td>
       </tr>
-      {open && <Expanded node={node} span={span} onOpenDetail={onOpenDetail} notes={notes} />}
+      {open && <Expanded node={node} span={span} onOpenDetail={onOpenDetail} historyDays={historyDays} remarkPlacement={remarkPlacement} />}
     </>
   )
 }
 
 /** 紧凑形态的外壳：一张带边框的表，表头一行。展开的行由 CompactList 统一管开合。 */
-export function CompactList({ nodes, onOpen, onWarm, notes = "" }: { nodes: Node[]; onOpen: (id: number) => void; onWarm?: () => void; notes?: string }) {
+export function CompactList({ nodes, onOpen, onWarm, historyDays, remarkPlacement }: { nodes: Node[]; onOpen: (id: number) => void; onWarm?: () => void; historyDays?: number; remarkPlacement?: RemarkPlacement }) {
   const span = useSpan()
   // 一次只摊开一行：表格本来就密，同时摊开两块会把上下文冲散。
   const [open, setOpen] = useState<number | null>(null)
@@ -278,7 +281,8 @@ export function CompactList({ nodes, onOpen, onWarm, notes = "" }: { nodes: Node
               onToggle={() => setOpen((cur) => (cur === n.id ? null : n.id))}
               onOpenDetail={() => onOpen(n.id)}
               onWarm={onWarm}
-              notes={notes}
+              historyDays={historyDays}
+              remarkPlacement={remarkPlacement}
             />
           ))}
         </tbody>
