@@ -32,7 +32,7 @@
       "type": "select",
       "key": "listTop",
       "label": "列表页顶部",
-      "default": "none",
+      "default": "both",
       "options": [
         {
           "value": "none",

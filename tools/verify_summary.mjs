@@ -347,14 +347,24 @@ function checkRhythm(where, dom) {
     `右列 ${pair}px ／ 今日流量第二列 ${day === null ? '—' : day - tile(dom, '今日流量').x}px ／ 实时网速第二列 ${net === null ? '—' : net - tile(dom, '实时网速').x}px`)
 }
 
-/* 1) 默认（后台没存过：GET config 回 {}）→ 概览行整个不挂载 */
+/* 1) 默认（后台没存过：GET config 回 {}）→ 两个都显示·概览卡片原版 */
+// 这一档自 1.5.1 起从「都不显示」改成「两个都显示·概览卡片原版」：装完就有分组标签行
+// 与**原版**概览卡片行。两条边界要分清：
+//   ① 已经存过 `listTop` 的站点不受影响（Hub 存的是整对象，站点配置里那份值说了算）；
+//   ② 从没存过这两项的站点（新装、或站长从没动过这一格）从此默认「都显示」。
+// 反向自测：拿改动前那一版构建跑，下面四条必须 FAIL（旧默认是「都不显示」）。
 {
   const dom = await render({}, 'default')
-  const ALL = ['月度预算', '剩余价值', '节点', '最忙节点', '今日流量', '实时网速']
-  check('默认关：一张概览卡片都没有', dom.tiles.length === 0 && dom.polylines === 0, `概览 ${dom.tiles.length} 张 / polyline ${dom.polylines}`)
-  check('默认关：六个标题一个都不在页面上', ALL.every((t) => !dom.body.includes(t)),
-    ALL.filter((t) => dom.body.includes(t)).join('、') || '（都不在）')
-  check('默认关：节点卡片照常四张', dom.nodeCards === 4, `节点卡片 ${dom.nodeCards} 张`)
+  check('默认：四张原版概览卡片都在、各一块读数',
+    dom.tiles.length === 4 && dom.tiles.every((t) => t.blocks.length === 1),
+    `概览 ${dom.tiles.length} 张${dom.tiles.length ? ` / 多块卡 ${multi(dom).length}` : ''}`)
+  check('默认：是原版而不是预算版（顺序 节点 / 最忙节点 / 今日流量 / 实时网速）',
+    dom.tiles.map((t) => t.titles.join('+')).join(',') === '节点,最忙节点,今日流量,实时网速'
+      && !dom.body.includes('月度预算') && !dom.body.includes('剩余价值'),
+    dom.tiles.map((t) => t.titles.join('+')).join(' / ') || '(一张概览卡片都没有)')
+  check('默认：分组标签行也在（那一行「全部 / 未分组」）', dom.body.includes('未分组'),
+    `分组标签行 ${dom.body.includes('未分组')}`)
+  check('默认：节点卡片照常四张', dom.nodeCards === 4, `节点卡片 ${dom.nodeCards} 张`)
 }
 
 /* 2) 原版（summary）：四张卡片各一块读数 + 逐个数字 */

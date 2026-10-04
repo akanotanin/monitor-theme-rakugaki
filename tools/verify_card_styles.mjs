@@ -188,10 +188,15 @@ const PROBE = `JSON.stringify((() => {
   const cards = all.filter((c) => /CPU/.test(c.innerText))
   const first = cards[0]
   const q = (sel) => first ? first.querySelectorAll(sel).length : -1
+  // ★节点列表那个栅格要从**卡片本身往上找**，不能用 document.querySelector('.grid')：
+  // 站点配置为空时列表页顶部那行原版概览卡片也带 .grid + xl:grid-cols-4（见 Summary.tsx），
+  // 它排在节点网格之前，拿「第一个 .grid」会读到概览卡片那张容器——「详细/紧凑档不该有四列」
+  // 这类否定断言就会假 FAIL（而正向那几条会假 PASS）。
+  const gridOf = (el) => { let n = el ? el.parentElement : null; while (n && !(typeof n.className === 'string' && /grid-cols/.test(n.className))) n = n.parentElement; return n ? n.className : '' }
   return {
     cards: cards.length,
     allCards: all.length,
-    grid: document.querySelector('.grid')?.className ?? '',
+    grid: gridOf(first),
     netRow: q('[data-net="row"]'),
     netGrid: q('[data-net="grid"]'),
     // 经典档底部那 2×2 四格：格子数 / 栅格列数 / 有没有 svg（箭头应该是文字）/ 两端配色 /
@@ -321,7 +326,7 @@ const COMPACT_PROBE = `JSON.stringify((() => {
     rows: rows.length,
     heads,
     cells,
-    grid4: [...document.querySelectorAll('*')].some((e) => typeof e.className === 'string' && e.className.includes('xl:grid-cols-4')),
+    grid4: [...document.querySelectorAll('.grid')].some((e) => typeof e.className === 'string' && e.className.includes('xl:grid-cols-4') && e.querySelector('[role=button]')),
     overflowX: html.scrollWidth > html.clientWidth,
     bars: rows.reduce((n, r) => n + r.querySelectorAll('.sk-bar-fill').length, 0),
     text: rows[0] ? rows[0].innerText.replace(/\\n/g, ' | ') : '',

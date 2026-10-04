@@ -34,7 +34,7 @@ export type ThemeConfig = {
   /**
    * 列表页顶部显示什么：none = 都不显示；groups = 分组标签行；summary = 概览卡片行（原版）；
    * budget = 概览卡片行（月度预算剩余价值版）；both = 分组标签行 + 原版概览卡片；
-   * bothBudget = 分组标签行 + 预算版概览卡片。
+   * bothBudget = 分组标签行 + 预算版概览卡片。默认是 both（两个都显示·概览卡片原版）。
    */
   listTop: "none" | "groups" | "summary" | "budget" | "both" | "bothBudget"
   /** 卡片「三网延迟」要显示的线路，按名字指定（ping 任务名），一行一个。 */
@@ -74,9 +74,10 @@ export const DEFAULTS: ThemeConfig = {
   // 默认「简约」：网络合成一行、读数那层标签提亮/条更细，和经典一样不发延迟请求。
   // 想看老样子（速率与总量各一行）在后台切「经典」，要三网延迟的切「延迟」，机器多想一屏看全的切「紧凑」。
   cardStyle: "plain",
-  // 默认「都不显示」：这两行都是「一眼看全站」的补充，站点本来就有每台机器的卡片；
-  // 关着时它们整个不挂载，首屏与没有这个功能时一模一样。
-  listTop: "none",
+  // 默认「两个都显示·概览卡片原版」：装完页面顶部就有一排分组标签（节点真分了组才出现）
+  // 加一行原版概览卡片。想清静（只要每台机器那张卡片）在后台选「都不显示」——关着时这两行
+  // 整个不挂载，首屏与没有这个功能时一模一样。
+  listTop: "both",
   // 延迟线路：留空 = 按后台顺序自动显示前几条；填了名字就只显示这些（一行一个）。
   // 名字是 ping 任务的名字，不是节点名——对不上的行会被跳过。
   pingLines: "",
@@ -109,15 +110,24 @@ export function cardStyleOf(v: unknown): ThemeConfig["cardStyle"] {
  * × 概览卡片三态（不显示 / 原版 / 预算版）里真的用得上的组合。
  *
  * 读到没有 `listTop` 的旧配置就按两个开关的组合迁过来：不迁的话，站长开着的那一行会静默消失。
+ * 1.5.1 起默认值从 `none` 改成 `both`（两个都显示·概览卡片原版）——只影响**从没存过这两项**的
+ * 站点：新装的开箱就有那两行，站长自己关掉的照旧关着（见下面 `legacy` 那一段）。
  */
 export function listTopOf(v: unknown, saved: { showSummary?: unknown; showGroupTabs?: unknown } = {}): ThemeConfig["listTop"] {
   if (v === "none" || v === "groups" || v === "summary" || v === "budget" || v === "both" || v === "bothBudget") return v
   // 旧版（≤1.4.0）：两个布尔开关，四种组合正好对应这一档的四个取值。
-  const summary = saved.showSummary === true
-  const tabs = saved.showGroupTabs === true
-  if (summary && tabs) return "both"
-  if (summary) return "summary"
-  if (tabs) return "groups"
+  // ★只有**真的存过**这两个键时才按老开关迁：一个键都没有（新装、或从没动过这一格）落回默认，
+  // 默认 1.5.1 起是「两个都显示·概览卡片原版」，这类站点跟着新默认走。
+  // 两个老键都在、且都是 false 的（站长自己关的那一种）继续落 `none`——默认值变了也不给他开回来。
+  const legacy = saved.showSummary !== undefined || saved.showGroupTabs !== undefined
+  if (legacy) {
+    const summary = saved.showSummary === true
+    const tabs = saved.showGroupTabs === true
+    if (summary && tabs) return "both"
+    if (summary) return "summary"
+    if (tabs) return "groups"
+    return "none"
+  }
   return DEFAULTS.listTop
 }
 

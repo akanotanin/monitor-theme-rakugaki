@@ -3,7 +3,8 @@
 //
 // 重点在三处容易静默出错的迁移：
 //   1. cardStyle：≤1.2.9 的 "detail" 现在叫 "latency"，1.9.0 起多了 "compact"，1.1.0 起多了 "plain"（也是默认档）;
-//   2. listTop：≤1.4.0 是两个布尔开关（showSummary / showGroupTabs），1.5.0 合成四选一；
+//   2. listTop：≤1.4.0 是两个布尔开关（showSummary / showGroupTabs），1.5.0 合成四选一，
+//      1.5.1 默认值从 none 改成 both（两个都显示·概览卡片原版）;
 //   3. farmUrl：≤1.5.0 是两个键（showFarmEntry + farmUrl），1.6.0 并成一个三态键。
 // 下面双向断「theme.json 声明了没 / DEFAULTS 兜底了没」——半截状态（字段删了、对话框还画着一格）
 // 最难发现。备注本身不在这一层：它由 hub 按节点下发（公开备注给访客、私有备注只给管理员，见
@@ -37,13 +38,19 @@ for (const v of TOPS) eq(listTopOf(v), v, `listTop 保留 ${v}`)
 eq(listTopOf(undefined, { showSummary: true, showGroupTabs: true }), "both", "老配置：两个都开 → both")
 eq(listTopOf(undefined, { showSummary: true, showGroupTabs: false }), "summary", "老配置：只开概览 → summary")
 eq(listTopOf(undefined, { showSummary: false, showGroupTabs: true }), "groups", "老配置：只开分组标签 → groups")
-eq(listTopOf(undefined, { showSummary: false, showGroupTabs: false }), "none", "老配置：两个都关 → none")
-eq(listTopOf(undefined, {}), "none", "没存过任何一项 → none")
-eq(listTopOf(undefined), "none", "连配置对象都没有 → none")
+eq(listTopOf(undefined, { showSummary: false, showGroupTabs: false }), "none", "老配置：两个都关 → none（默认值变了也不给开回来）")
+eq(listTopOf(undefined, {}), "both", "没存过任何一项 → 跟着新默认：两个都显示·概览卡片原版")
+eq(listTopOf(undefined), "both", "连配置对象都没有 → 跟着新默认")
 // 只存了其中一个（另一个键根本不存在）也要按「关」算，不能当成缺失而回落整个默认值。
 eq(listTopOf(undefined, { showGroupTabs: true }), "groups", "只存了分组标签一个键 → groups")
+// 显式存了 false 的键也算「站长动过这一格」，不落新默认。
+eq(listTopOf(undefined, { showSummary: false }), "none", "只存了概览=false 一个键 → none")
 // 不认识的 listTop（手改、别的版本）当没存过，继续按老开关迁，而不是直接掉回默认。
 eq(listTopOf("weird", { showSummary: true }), "summary", "listTop 认不出时仍按老开关迁")
+// 默认值本身（1.5.1 起）：theme.json 与 DEFAULTS 都得是 both，两处一起断，半截状态最难发现。
+eq(DEFAULTS.listTop, "both", "默认「两个都显示·概览卡片原版」")
+eq(JSON.parse(readFileSync(new URL("../../theme.json", import.meta.url), "utf8")).config
+  .find((f: { key?: string }) => f.key === "listTop")?.default, "both", "theme.json 的 listTop 默认值同步为 both")
 
 // ── 三个布尔是六选一的投影 ───────────────────────────────────────────
 // 1.10.0 多出的 budget / bothBudget 只在「概览卡片长什么样」上有别：前两个布尔与 summary / both 一致。

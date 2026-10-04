@@ -134,7 +134,12 @@ await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-sch
 
 /** 渲染紧凑形态并展开第一行（行本身是 role=button，点它就地摊开，不跳页）。 */
 async function renderAndExpand(cfg, label, w = 1440, h = 1200) {
-  config = { pingLines: '北京电信', ...cfg }
+  // ★站点配置在这里**钉死**：这一套验的是「紧凑档展开行里那枚备注图标」，与列表页顶部那两行
+  // （分组标签 / 概览卡片）无关；1.5.1 起它们的默认从「都不显示」改成「两个都显示」，不钉的话
+  // 页面上会多出那两行，手机档里那条「按固定坐标点浮层外面」的用例会点到别的东西上
+  // （实测：390 下点 (30,700) 落到展开行上、把它收了起来 → 两条假 FAIL）。
+  // 默认值本身由 tools/verify_summary.mjs 的第 1 组用例负责（用空配置渲染）。
+  config = { listTop: 'none', pingLines: '北京电信', ...cfg }
   await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: w < 500 })
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
   const table = await waitFor(`(() => { const rs = document.querySelectorAll('tbody tr[role=button]'); return rs.length >= 2 && document.fonts.status === 'loaded' })()`)
