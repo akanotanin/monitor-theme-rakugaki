@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react"
+import { useLayoutEffect, useRef, type ComponentType, type ReactNode } from "react"
 import { Activity, ArrowDown, ArrowDownUp, ArrowUp, Gauge, PiggyBank, Server, Wallet } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
@@ -52,9 +52,58 @@ function Block({ icon: Icon, title, hint, children }: {
   )
 }
 
-/** 一块读数里的主数字。`tnum` 让数字等宽：每两秒刷一次时不会左右抖。 */
+/**
+ * 一块读数里的主数字。`tnum` 让数字等宽：每两秒刷一次时不会左右抖。
+ *
+ * ★**长数字要缩号**：这一行是 `truncate`，而价值版那两格各占一半卡宽——千位数量级的金额
+ * （`≈¥2,803.13` 比 `≈¥277.01` 宽 14px）在「列数刚换」的窄列机位（640 / 1280 / 1440）
+ * 会被打成 `≈¥2,803.…`（站长实拍）。做法：按基准字号量一次「文本宽 ÷ 格子宽」，
+ * 装不下就按比例降字号（有下限，见 BIG_MIN），窗口缩放与字体加载完各重量一次；
+ * `truncate` 留着当最后一道兜底。降号只发生在真的装不下时，短读数（7 / 7）不受影响。
+ */
+const BIG_BASE = 22
+const BIG_MIN = 15
 function Big({ children }: { children: ReactNode }) {
-  return <div className="tnum mt-2 truncate text-[22px] leading-tight font-medium">{children}</div>
+  const ref = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fit = () => {
+      el.style.fontSize = ""                        // 先回到基准字号量，免得越缩越小
+      el.style.lineHeight = ""
+      const baseH = el.getBoundingClientRect().height
+      const cw = el.clientWidth
+      const sw = el.scrollWidth
+      if (cw > 0 && sw > cw) {
+        // 行高钉在基准字号那一档：缩号只改字的大小，卡片高度零位移
+        // （否则长读数那张卡会矮几像素，整行卡片跟着参差）。
+        el.style.lineHeight = `${baseH}px`
+        el.style.fontSize = `${Math.max(BIG_MIN, Math.floor((BIG_BASE * cw) / sw))}px`
+      }
+    }
+    fit()
+    const ro = new ResizeObserver(fit)              // 换列数 / 换字体 / 换长度都要重量
+    ro.observe(el)
+    // ★字体是**后到**的（这套皮肤的数字走 @font-face）：先按兜底字体量会得出「装得下」，
+    //   真字体一到就溢出——冷启动那一次仍会被截（实测：同一个构建，字体已缓存时护栏全绿、
+    //   冷加载时 640 档仍溢出 14px）。所以加载完 + 头几帧各重量一次。
+    const timers = [0, 120, 400, 1200].map((ms) => window.setTimeout(fit, ms))
+    const onDone = () => fit()
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.addEventListener?.("loadingdone", onDone)
+      document.fonts.ready?.then(fit).catch(() => {})
+      // 最确定的一手：按这个盒子**实际的字体规格**把字体要过来，就位后再量一次
+      // （`ready` 只等「当时在加载的」字体，卡片挂载晚于它时不会重来）。
+      const cs = window.getComputedStyle(el)
+      document.fonts.load?.(`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`)?.then(fit)?.catch(() => {})
+    }
+    return () => {
+      ro.disconnect()
+      timers.forEach((t) => window.clearTimeout(t))
+      document.fonts?.removeEventListener?.("loadingdone", onDone)
+    }
+  }, [children])
+  return <div ref={ref} className="tnum mt-2 truncate text-[22px] leading-tight font-medium">{children}</div>
 }
 
 /** 一块读数底下那行小字（卡片两端对齐时它落在下沿）。 */
