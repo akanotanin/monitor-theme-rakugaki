@@ -165,12 +165,14 @@ function BusiestBlock({ fleet }: { fleet: Fleet }) {
   )
 }
 
-export function SummaryCards({ nodes, finance = false }: { nodes: Node[]; finance?: boolean }) {
+export function SummaryCards({ nodes, group, finance = false }: { nodes: Node[]; group: string | null; finance?: boolean }) {
   const fleet = summarize(nodes)
   const budget = budgetOf(nodes)
   // 模块级的采样缓冲：`useNodes` 每次收到推送（或轮询回来）就追加一个点，
-  // 所以这里读到的是「打开页面到现在」的全站速率，与分组筛选无关。
-  const series = speedHistory.get(null) ?? []
+  // 所以这里读到的是「打开页面到现在」的速率。**按分组取**（`group` = 当前选中的那一档，
+  // null = 全部）：同一个缓冲里每个分组各有一条线（api.ts 的 sample），拿全站那条线画在
+  // 分组标签下面，会出现「读数是这一组的、走势线是全站的」这种对不上的画面。
+  const series = speedHistory.get(group) ?? []
   // 折算说明：只列真的用到过的币种——各站的账混着 USD / EUR / CNY 记，合起来必须说明口径。
   const note = fxNote(budget.used, budget.skipped)
 
