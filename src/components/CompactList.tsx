@@ -254,7 +254,7 @@ export function CompactList({ nodes, onOpen, onWarm, historyDays, remarkPlacemen
   const [open, setOpen] = useState<number | null>(null)
 
   return (
-    <div className="sk-card overflow-hidden text-card-foreground">
+    <div data-card-style="compact" className="sk-card overflow-hidden text-card-foreground">
       <table className="w-full table-fixed text-xs">
         <thead>
           <tr className="border-b-[1.5px] border-dashed border-line-strong bg-paper-warm">

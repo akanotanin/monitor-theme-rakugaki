@@ -2,7 +2,7 @@
 // 空 / 空白 / 没有这个字段都算「没写」；逗号分隔＝多枚小卡片；私有备注先按换行分段、段内再拆；
 // 两边合并成串时**私有在前、公有在后**（见 remarkChips）。
 // 跑法同另外几个：`npm test`（Node 自己剥类型，不需要 runner）。没有任何东西 import 它，不进 bundle。
-import { hubTags, ownTags, publicRemark, remarkChips, splitTags } from "./notes.ts"
+import { hasDetailRemarks, hubTags, ownTags, publicRemark, remarkChips, splitTags } from "./notes.ts"
 
 let failed = 0
 function eq(got: unknown, want: unknown, what: string) {
@@ -74,6 +74,17 @@ eq(remarkChips({}), [], "老 hub / 匿名且没公开备注＝空数组")
 // ── splitTags 本身 ────────────────────────────────────────────────────
 eq(splitTags("a, b ，c"), ["a", "b", "c"], "半角 / 全角逗号都拆，逐枚削空白")
 eq(splitTags(",,，"), [], "全是分隔符＝空")
+
+// ── 整页详情那一块占不占位（骨架对齐高度要用它） ──────────────────────────
+// 四种组合都要钉住：有备注且摊在详情页 → 占位；有备注但只摊在卡片上 / 都不显示 → 不占位；
+// 没备注 → 不占位（这一条错了骨架会反过来高出 38px）。
+const noted = { public_remark: "公开备注", remark: "私有备注" }
+eq(hasDetailRemarks(noted, "both"), true, "有备注 + 都显示 → 详情页那一块占位")
+eq(hasDetailRemarks(noted, "detail"), true, "有备注 + 只在详情页 → 占位")
+eq(hasDetailRemarks(noted, "card"), false, "有备注 + 只在卡片 → 详情页不占位")
+eq(hasDetailRemarks(noted, "none"), false, "有备注 + 都不显示 → 详情页不占位")
+eq(hasDetailRemarks({}, "both"), false, "没写备注 → 不占位")
+eq(hasDetailRemarks({ public_remark: "  ,  " }, "both"), false, "只有逗号空段 → 当作没写")
 
 if (failed) {
   console.error(`\n备注：${failed} 条不通过`)

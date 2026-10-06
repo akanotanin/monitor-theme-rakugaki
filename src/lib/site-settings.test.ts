@@ -2,7 +2,7 @@
 // 跑法同另外几个：`npm test`（Node 自己剥类型，不需要 runner）。没有任何东西 import 它，不进 bundle。
 //
 // 重点在三处容易静默出错的迁移：
-//   1. cardStyle：≤1.2.9 的 "detail" 现在叫 "latency"，1.9.0 起多了 "compact"，1.1.0 起多了 "plain"（也是默认档）;
+//   1. cardStyle：≤1.2.9 的 "detail" 现在叫 "latency"，1.9.0 起多了 "compact"，1.1.0 起多了 "plain"（2026-10-06 起默认档是 "detailed"）;
 //   2. listTop：≤1.4.0 是两个布尔开关（showSummary / showGroupTabs），1.5.0 合成四选一，
 //      1.5.1 默认值从 none 改成 both（两个都显示·概览卡片原版）;
 //   3. farmUrl：≤1.5.0 是两个键（showFarmEntry + farmUrl），1.6.0 并成一个三态键。
@@ -13,7 +13,7 @@
 // 读不出来的表现不是报错，而是「站长开着的那一项自己关了」。
 import { readFileSync } from "node:fs"
 
-import { DEFAULTS, FARM_OFF, REMARK_PLACEMENTS, cardStyleOf, hasGroupTabs, hasSummary, isBudgetLayout, listTopOf, normalizeConfig, remarksOnCards, remarksOnDetail } from "./site-settings.ts"
+import { CARD_STYLES, DEFAULTS, FARM_OFF, REMARK_PLACEMENTS, cardStyleOf, cardStyleOrNull, hasGroupTabs, hasSummary, isBudgetLayout, listTopOf, normalizeConfig, remarksOnCards, remarksOnDetail } from "./site-settings.ts"
 
 let failed = 0
 function eq(got: unknown, want: unknown, what: string) {
@@ -27,8 +27,20 @@ function eq(got: unknown, want: unknown, what: string) {
 // ── cardStyle：旧名迁移 ───────────────────────────────────────────────
 eq(cardStyleOf("detail"), "latency", '旧值 "detail" 迁到 "latency"')
 for (const v of ["classic", "latency", "detailed", "plain", "compact"]) eq(cardStyleOf(v), v, `cardStyle 保留 ${v}`)
-eq(cardStyleOf("nope"), "plain", "cardStyle 认不出的值回落「简约」（默认档）")
-eq(cardStyleOf(undefined), "plain", "cardStyle 没存过回落「简约」（默认档）")
+eq(cardStyleOf("nope"), "detailed", "cardStyle 认不出的值回落 DEFAULTS.cardStyle（现为「详细」）")
+eq(cardStyleOf(undefined), "detailed", "cardStyle 没存过回落 DEFAULTS.cardStyle（现为「详细」）")
+
+// ── cardStyleOrNull：访客自己挑的那一档（认不出来是 null = 没挑过，不是回落默认）──
+eq(CARD_STYLES, ["classic", "plain", "latency", "detailed", "compact"], "五档的顺序（顶栏菜单按它排）")
+for (const v of CARD_STYLES) eq(cardStyleOrNull(v), v, `cardStyleOrNull 保留 ${v}`)
+eq(cardStyleOrNull("detail"), "latency", "访客存过旧名 detail 也要迁到 latency")
+eq(cardStyleOrNull("nope"), null, "认不出的值 → null（跟着站长的设置走）")
+eq(cardStyleOrNull(null), null, "没存过 → null")
+eq(cardStyleOrNull(""), null, "空串 → null")
+eq(cardStyleOrNull(3), null, "数字 → null（localStorage 里什么字符串都可能）")
+eq(cardStyleOf(undefined), cardStyleOrNull(undefined) ?? DEFAULTS.cardStyle, "cardStyleOf 与 cardStyleOrNull 是同一套判据")
+eq(CARD_STYLES.length, 5, "就是五种形态")
+eq(DEFAULTS.cardStyle, "detailed", "默认档是「详细」")
 
 // ── listTop：六选一本身就认 ───────────────────────────────────────────
 const TOPS = ["none", "groups", "summary", "budget", "both", "bothBudget"] as const
@@ -39,18 +51,22 @@ eq(listTopOf(undefined, { showSummary: true, showGroupTabs: true }), "both", "�
 eq(listTopOf(undefined, { showSummary: true, showGroupTabs: false }), "summary", "老配置：只开概览 → summary")
 eq(listTopOf(undefined, { showSummary: false, showGroupTabs: true }), "groups", "老配置：只开分组标签 → groups")
 eq(listTopOf(undefined, { showSummary: false, showGroupTabs: false }), "none", "老配置：两个都关 → none（默认值变了也不给开回来）")
-eq(listTopOf(undefined, {}), "both", "没存过任何一项 → 跟着新默认：两个都显示·概览卡片原版")
-eq(listTopOf(undefined), "both", "连配置对象都没有 → 跟着新默认")
+eq(listTopOf(undefined, {}), "bothBudget", "没存过任何一项 → 跟着新默认：两个都显示·概览卡片价值版")
+eq(listTopOf(undefined), "bothBudget", "连配置对象都没有 → 跟着新默认")
 // 只存了其中一个（另一个键根本不存在）也要按「关」算，不能当成缺失而回落整个默认值。
 eq(listTopOf(undefined, { showGroupTabs: true }), "groups", "只存了分组标签一个键 → groups")
 // 显式存了 false 的键也算「站长动过这一格」，不落新默认。
 eq(listTopOf(undefined, { showSummary: false }), "none", "只存了概览=false 一个键 → none")
 // 不认识的 listTop（手改、别的版本）当没存过，继续按老开关迁，而不是直接掉回默认。
 eq(listTopOf("weird", { showSummary: true }), "summary", "listTop 认不出时仍按老开关迁")
-// 默认值本身（1.5.1 起）：theme.json 与 DEFAULTS 都得是 both，两处一起断，半截状态最难发现。
-eq(DEFAULTS.listTop, "both", "默认「两个都显示·概览卡片原版」")
-eq(JSON.parse(readFileSync(new URL("../../theme.json", import.meta.url), "utf8")).config
-  .find((f: { key?: string }) => f.key === "listTop")?.default, "both", "theme.json 的 listTop 默认值同步为 both")
+// 默认值本身：theme.json 与 DEFAULTS 必须逐字一致（1.5.1 起是 both、2026-10-06 起是 bothBudget），
+// 两处一起断 —— 只改一处的半截状态最难发现（后台显示一套、页面另一套，谁也不报错）。
+eq(DEFAULTS.listTop, "bothBudget", "列表页顶部默认「两个都显示·概览卡片价值版」")
+const themeJson = JSON.parse(readFileSync(new URL("../../theme.json", import.meta.url), "utf8"))
+eq(themeJson.config.find((f: { key?: string }) => f.key === "listTop")?.default, "bothBudget",
+  "theme.json 的 listTop 默认值同步为 bothBudget")
+eq(themeJson.config.find((f: { key?: string }) => f.key === "cardStyle")?.default, "detailed",
+  "theme.json 的 cardStyle 默认值同步为 detailed")
 
 // ── 三个布尔是六选一的投影 ───────────────────────────────────────────
 // 1.10.0 多出的 budget / bothBudget 只在「概览卡片长什么样」上有别：前两个布尔与 summary / both 一致。

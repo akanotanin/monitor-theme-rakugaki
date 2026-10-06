@@ -57,6 +57,12 @@
   --grid: rgba(20, 20, 19, .045);
   --ok: #4f7a42;
   --warn: #9a7020;
+  /* 节点地球那三块颜色（见文件末尾的 .globe-*）：海面、陆地的淡染与圆盘边缘的暗影。
+     取值照本站的纸/墨/便签一套 —— 海面用 --fill-sky 那支蓝、陆地用 --fill-oat 那支米，
+     圆盘边缘用墨（不是黑），这样它与卡片、便签是同一副纸感。 */
+  --globe-ocean: rgba(178, 202, 224, 0.72);
+  --globe-land: rgba(213, 199, 176, 0.92);
+  --globe-rim: rgba(20, 20, 19, 0.18);
   --shadow-card: 6px 6px 0 var(--fill-oat);
   --shadow-pop: 9px 9px 0 var(--fill-oat);
 
@@ -148,6 +154,10 @@
   --grid: rgba(240, 238, 230, .04);
   --ok: #8db57c;
   --warn: #d6ae5c;
+  /* 暗色的地球三块：色相与亮色同一套（海面偏蓝、陆地偏暖），按暗色便签那几支取值。 */
+  --globe-ocean: rgba(58, 92, 122, 0.62);
+  --globe-land: rgba(163, 137, 88, 0.42);
+  --globe-rim: rgba(0, 0, 0, 0.45);
   --destructive: #e0837a;
   --background: var(--paper);
   --foreground: var(--ink);
@@ -365,5 +375,143 @@
   background: var(--elev);
 }
 
+/* 顶栏那枚「卡片形态」菜单的浮层：与本站其它浮层同一副纸感（2px 墨线 + 歪圆角 + 硬影子），
+   条目悬停用 accent（= paper-warm，与 .sk-icon:hover 同一支底色）。 */
+.card-style-menu {
+  border: 2px solid var(--stroke);
+  border-radius: var(--r-chip);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-pop);
+}
+
 /* 手写小注（空状态、「剩余价值」那类口径提示）。 */
 .sk-hand { font-family: var(--font-hand); color: var(--accent-ink); }
+
+/* ---------------------------------------------------------------- 节点地球
+
+   与 jikasei 同一套几何与排布（`@/lib/globe` + `@/components/Globe.tsx`），
+   这里只把它接到本主题的纸感上：面板是 2px 墨线 + 歪圆角 + 硬影子（与 .sk-card 同一副面孔），
+   海面/陆地/边缘三块走上面的 --globe-* token。
+
+   ★标签与底部文案**保持等宽字体**：`@/lib/globe` 的标签宽度是按等宽字估的
+   （半角 5.05、全角 8.6 个用户单位），换成手写比例字体会让"放不下要截断"那几条判据失准。
+
+   两列的比例 1.35fr / 0.65fr 与圆盘高度 280px 都照上游；窄到 900px 以下改成上下两段
+   （上游是干脆不画，本站留着，窄屏自动降到 low 档）。 */
+.globe-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  overflow: hidden;
+  border: 2px solid var(--stroke);
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: var(--shadow-card);
+}
+@media (min-width: 900px) {
+  .globe-panel { grid-template-columns: 1.35fr 0.65fr; }
+}
+
+.globe-atlas {
+  position: relative;
+  height: 280px;
+  overflow: hidden;
+  cursor: grab;
+  /* 只让出竖向：手机上在地球上竖着划是滚页面，横着划才是转地球。 */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.globe-atlas[data-drag="true"] { cursor: grabbing; }
+/* 手机上把圆盘压低一档：460×240 的画布在 390 宽的屏上，280 高会上下各空出 38px，
+   地球只占中间那条；压在 210 就基本贴合。 */
+@media (max-width: 720px) {
+  .globe-atlas { height: 210px; }
+}
+.globe-atlas svg { display: block; width: 100%; height: 100%; color: var(--foreground); }
+/* 地球上的东西一律不吃指针事件，只有那几枚透明的命中圆吃 —— 于是"点地球"与
+   "点某台机器"是两件互不干扰的事。 */
+.globe-atlas svg text,
+.globe-atlas svg path,
+.globe-atlas svg line,
+.globe-atlas svg circle { pointer-events: none; }
+.globe-atlas svg .hit { pointer-events: auto; cursor: pointer; }
+
+.globe-ocean { fill: var(--globe-ocean); }
+.globe-land { fill: var(--globe-land); stroke: none; stroke-linejoin: round; stroke-linecap: round; }
+.globe-coast { fill: none; stroke: var(--foreground); stroke-width: 0.55; stroke-opacity: 0.36; }
+.globe-disk { fill: url(#globe-shade); stroke: var(--foreground); stroke-width: 1.05; stroke-opacity: 0.42; }
+.globe-wire { fill: none; stroke: var(--foreground); stroke-opacity: 0.1; }
+.globe-sweep { fill: none; stroke: var(--foreground); }
+.globe-base { stroke: var(--foreground); stroke-opacity: 0.4; stroke-width: 1; }
+.globe-link { fill: none; stroke: var(--foreground); stroke-width: 0.55; opacity: 0.32; }
+.globe-stem { fill: none; stroke: var(--foreground); stroke-width: 0.75; }
+/* 针是空心的琥珀色圆环：只表示"这里有一台"，不表示在线与否 —— 在线/离线在下面的卡片里有话说。 */
+.globe-pin { fill: none; stroke: var(--warn); stroke-width: 1.15; }
+.globe-selected-ring { fill: none; stroke: var(--foreground); stroke-width: 1.2; stroke-dasharray: 2 2; }
+.globe-selected-core { fill: var(--foreground); stroke: var(--card); stroke-width: 1.4; }
+/* 标签底下垫一道卡片底色的描边（paint-order: stroke）：引线从文字后面穿过去时
+   文字仍然读得出来。 */
+.globe-label {
+  fill: var(--muted-foreground);
+  font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", monospace;
+  font-size: 9.35px;
+  stroke: var(--card);
+  stroke-width: 3;
+  paint-order: stroke;
+  stroke-linejoin: round;
+}
+.globe-caption {
+  fill: var(--muted-foreground);
+  font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", monospace;
+  font-size: 8.8px;
+  letter-spacing: 1.4px;
+  opacity: 0.55;
+}
+
+.globe-side {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 8px 18px;
+  padding: 14px 16px;
+  border-top: 1.5px dashed var(--line-strong);
+  font-size: 13px;
+}
+@media (min-width: 900px) {
+  .globe-side { border-top: 0; border-left: 1.5px dashed var(--line-strong); }
+}
+.globe-side-title { grid-column: 1 / -1; color: var(--muted-foreground); }
+.globe-reg {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.globe-reg:hover { color: var(--foreground); }
+/* 「全部」独占一整行：它是一条汇总（本分组一共几台），跟具体地区并排会读成"第一个地区"。 */
+.globe-reg-all { grid-column: 1 / -1; }
+.globe-reg span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.globe-reg b { color: var(--foreground); font-weight: 500; font-variant-numeric: tabular-nums; }
+.globe-reg[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
+.globe-reg-flag {
+  display: inline-block;
+  height: 12px;
+  width: 16px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  border-radius: 2px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--border);
+}
+/* 顶栏那枚开关：关掉时压暗，一眼看得出地球是关着的。 */
+.globe-toggle[aria-pressed="false"] { color: var(--muted-foreground); opacity: 0.6; }

@@ -94,7 +94,14 @@ const capped = budgetOf([node({ price: 100, currency: "CNY", billing_cycle: "yea
 eq(round(capped.remaining), 100, "剩余天数超过周期时封顶为价格")
 
 /* 旧 hub 没有 expires_in：退回按 expires_at 自己数（与卡片上的到期同一条路）。 */
-const iso = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
+// ★这个日期要按**本地**日历算（与 @/lib/money 里数天数的口径一致）。原来用 toISOString() 取的是
+//   UTC 那天：本地 0–8 点之间它会比本地日期早一天，于是「剩 15 天」被数成 14 天——夹具自己的坑，
+//   与运行时无关（每天凌晨必红，白天又自己变绿）。
+const iso = (days: number) => {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
 const legacy = budgetOf([{ ...node({ price: 30, currency: "CNY", billing_cycle: "monthly" }), expires_in: undefined, expires_at: iso(15) } as unknown as Node])
 eq(round(legacy.remaining), 15, "旧 hub 按 expires_at 自己数（剩 15 天 → 一半）")
 
@@ -102,7 +109,7 @@ eq(round(legacy.remaining), 15, "旧 hub 按 expires_at 自己数（剩 15 天 �
 eq(cny(1234.5), "¥1,234.50", "人民币金额带千分位")
 eq(cny(0), "¥0.00", "零也写两位小数")
 eq(fxNote(["CNY"]), "按固定汇率折算成人民币", "只用人民币时不列汇率")
-eq(fxNote(["CNY", "USD"]), `按固定汇率折算（1 USD = ¥${FX_CNY.USD}，2026-09-30 取自 open.er-api.com）`, "列用到的汇率")
+eq(fxNote(["CNY", "USD"]), `按固定汇率折算（1 USD = ¥${FX_CNY.USD}，2026-09-30）`, "列用到的汇率与取价日期")
 eq(fxNote(["CNY"], ["XYZ"]), "按固定汇率折算成人民币；XYZ 没有汇率，未计入", "没有汇率的币种要点名")
 
 if (failed) {

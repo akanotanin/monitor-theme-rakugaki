@@ -392,24 +392,34 @@ function checkRhythm(where, dom) {
     `右列 ${pair}px ／ 今日流量第二列 ${day === null ? '—' : day - tile(dom, '今日流量').x}px ／ 实时网速第二列 ${net === null ? '—' : net - tile(dom, '实时网速').x}px`)
 }
 
-/* 1) 默认（后台没存过：GET config 回 {}）→ 两个都显示·概览卡片原版 */
-// 这一档自 1.5.1 起从「都不显示」改成「两个都显示·概览卡片原版」：装完就有分组标签行
-// 与**原版**概览卡片行。两条边界要分清：
+/* 1) 默认（后台没存过：GET config 回 {}）→ 两个都显示·概览卡片价值版 */
+// 这一档两次改过：1.5.1 从「都不显示」改成「两个都显示·概览卡片原版」，2026-10-06（跟 jikasei
+// 1.24.0 同步）改成「两个都显示·概览卡片价值版」。两条边界要分清：
 //   ① 已经存过 `listTop` 的站点不受影响（Hub 存的是整对象，站点配置里那份值说了算）；
-//   ② 从没存过这两项的站点（新装、或站长从没动过这一格）从此默认「都显示」。
-// 反向自测：拿改动前那一版构建跑，下面四条必须 FAIL（旧默认是「都不显示」）。
+//   ② 从没存过这两项的站点（新装、或站长从没动过这一格）跟着新默认走。
+// 反向自测：拿改动前那一版构建跑，下面四条必须 FAIL。
 {
   const dom = await render({}, 'default')
-  check('默认：四张原版概览卡片都在、各一块读数',
-    dom.tiles.length === 4 && dom.tiles.every((t) => t.blocks.length === 1),
-    `概览 ${dom.tiles.length} 张${dom.tiles.length ? ` / 多块卡 ${multi(dom).length}` : ''}`)
-  check('默认：是原版而不是预算版（顺序 节点 / 最忙节点 / 今日流量 / 实时网速）',
-    dom.tiles.map((t) => t.titles.join('+')).join(',') === '节点,最忙节点,今日流量,实时网速'
-      && !dom.body.includes('月度预算') && !dom.body.includes('剩余价值'),
+  check('默认：四张价值版概览卡片都在（前两张各两块读数）',
+    dom.tiles.length === 4 && multi(dom).length === 2,
+    `概览 ${dom.tiles.length} 张 / 多块卡 ${multi(dom).length}`)
+  check('默认：是价值版（第一张同时带「月度预算」与「剩余价值」）',
+    dom.body.includes('月度预算') && dom.body.includes('剩余价值')
+      && (dom.tiles[0]?.titles ?? []).includes('月度预算') && (dom.tiles[0]?.titles ?? []).includes('剩余价值'),
     dom.tiles.map((t) => t.titles.join('+')).join(' / ') || '(一张概览卡片都没有)')
   check('默认：分组标签行也在（那一行「全部 / 未分组」）', dom.body.includes('未分组'),
     `分组标签行 ${dom.body.includes('未分组')}`)
   check('默认：节点卡片照常四张', dom.nodeCards === 4, `节点卡片 ${dom.nodeCards} 张`)
+}
+
+/* 1b) 显式关掉（listTop: none）→ 概览行与标签行整个不挂载（不是藏起来） */
+{
+  const dom = await render({ listTop: 'none' }, 'off')
+  const ALL = ['月度预算', '剩余价值', '节点', '最忙节点', '今日流量', '实时网速']
+  check('显式关：一张概览卡片都没有', dom.tiles.length === 0, `概览 ${dom.tiles.length} 张`)
+  check('显式关：六个标题一个都不在页面上', ALL.every((t) => !dom.body.includes(t)),
+    ALL.filter((t) => dom.body.includes(t)).join('、') || '（都不在）')
+  check('显式关：节点卡片照常四张', dom.nodeCards === 4, `节点卡片 ${dom.nodeCards} 张`)
 }
 
 /* 2) 原版（summary）：四张卡片各一块读数 + 逐个数字 */
@@ -476,7 +486,7 @@ let classicNet = null
     budgetHint)
   check('预算版：剩余价值的提示写明口径（价格 × 剩余天数 ÷ 周期天数）',
     valueHint.includes('剩余天数') && valueHint.includes('无到期日') && valueHint.includes('折算'), valueHint)
-  check('预算版：折算日期与来源写在提示里', budgetHint.includes('2026-09-30') && budgetHint.includes('open.er-api.com'), budgetHint)
+  check('预算版：折算日期写在提示里（不写来源站点）', budgetHint.includes('2026-09-30') && !/https?:\/\/|[a-z0-9-]+\.(com|net|org|io)/.test(budgetHint), budgetHint)
 }
 
 /* 4) 一块都没有 / 一次性买断 / 没有汇率的降级 */

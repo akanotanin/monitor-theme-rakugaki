@@ -28,13 +28,13 @@ export type ThemeConfig = {
    * 卡片形态：classic = 速率与总量各一行（2×2 四格）、不含延迟；plain = 网络合成一行，
    * 读数那层另换一套视觉处理（标签提亮、条压细、底注变小）、不含延迟；latency = 网络一行 +
    * 三网延迟；detailed = 再加在线时长、价格与到期；compact = 一行一台的表格（密度最高）。
-   * 默认是 plain（与 jikasei 1.11.2 同口径）。
+   * 默认是 detailed（2026-10-06 起）。
    */
   cardStyle: "classic" | "latency" | "detailed" | "plain" | "compact"
   /**
    * 列表页顶部显示什么：none = 都不显示；groups = 分组标签行；summary = 概览卡片行（原版）；
    * budget = 概览卡片行（月度预算剩余价值版）；both = 分组标签行 + 原版概览卡片；
-   * bothBudget = 分组标签行 + 预算版概览卡片。默认是 both（两个都显示·概览卡片原版）。
+   * bothBudget = 分组标签行 + 预算版概览卡片。默认是 bothBudget。
    *
    * 带标签行的两档里，**概览卡片算的是当前分组**（与下面的列表同一批机器，见 api.ts 的
    * groupView）；只有概览卡片的两档没有筛选入口，那它一直是全站口径。
@@ -74,13 +74,12 @@ export const DEFAULTS: ThemeConfig = {
   // 「装主题」与「部署养鸡场」是两件事，站长没装就不该多出一枚点了没反应的图标；
   // 想固定指向别处（包括别人的公开那座）就填地址，想一律不显示就填 `off`。
   farmUrl: "",
-  // 默认「简约」：网络合成一行、读数那层标签提亮/条更细，和经典一样不发延迟请求。
-  // 想看老样子（速率与总量各一行）在后台切「经典」，要三网延迟的切「延迟」，机器多想一屏看全的切「紧凑」。
-  cardStyle: "plain",
-  // 默认「两个都显示·概览卡片原版」：装完页面顶部就有一排分组标签（节点真分了组才出现）
-  // 加一行原版概览卡片。想清静（只要每台机器那张卡片）在后台选「都不显示」——关着时这两行
-  // 整个不挂载，首屏与没有这个功能时一模一样。
-  listTop: "both",
+  // 默认「详细」（2026-10-06 跟 jikasei 1.24.0 同一口径）：在「延迟」之上再摊在线时长、价格与到期，
+  // 一眼看全一台机器。想更轻的切「简约」（底部收成一行两段、不发延迟请求）；机器多、想一屏看全的切「紧凑」。
+  cardStyle: "detailed",
+  // 默认「两个都显示·概览卡片价值版」（同上）：分组标签行 + 预算版概览卡片。
+  // 这两行都是「一眼看全站」的补充，数据取自节点列表本身、不多发请求；站点没分组时标签行自然不出现。
+  listTop: "bothBudget",
   // 延迟线路：留空 = 按后台顺序自动显示前几条；填了名字就只显示这些（一行一个）。
   // 名字是 ping 任务的名字，不是节点名——对不上的行会被跳过。
   pingLines: "",
@@ -93,11 +92,28 @@ export const DEFAULTS: ThemeConfig = {
  * ——「延迟」才是这一档真正展示的东西，也把「详细」这个名字腾给后面那一档。
  * 读到旧值就迁过来：不迁的话，存过 "detail" 的站会被当成从没保存过、悄悄掉回经典。
  */
+/** 卡片形态的五档，**按界面上要显示的顺序**（顶栏那枚菜单、后台那格下拉都照它排）。 */
+export const CARD_STYLES: ThemeConfig["cardStyle"][] = ["classic", "plain", "latency", "detailed", "compact"]
+
+/**
+ * 卡片形态这一档的取值，认不出来就 `null`。
+ *
+ * 两处用：
+ *   · `cardStyleOf`（站点设置）：认不出 → 回落默认档；
+ *   · 访客自己在顶栏选的那一档：认不出 → `null` = **没选过**，于是跟着站长的设置走。
+ *     两者差别就在这一步：设置读坏了要退回一个能用的值，访客的偏好读坏了应该视为"没选"。
+ *
+ * 还在迁一个旧值：它在更早的版本里叫 "detail"，现在改叫 "latency"——「延迟」才是这一档
+ * 真正展示的东西，也把「详细」这个名字腾给后面那一档。不迁的话，存过 "detail" 的站会被
+ * 当成从没保存过、悄悄掉回默认档。
+ */
+export function cardStyleOrNull(v: unknown): ThemeConfig["cardStyle"] | null {
+  const style = v === "detail" ? "latency" : v
+  return CARD_STYLES.includes(style as ThemeConfig["cardStyle"]) ? (style as ThemeConfig["cardStyle"]) : null
+}
+
 export function cardStyleOf(v: unknown): ThemeConfig["cardStyle"] {
-  // ≤1.2.9 的值：那时候这一档叫「详细」，现在叫「延迟」——同一档，只是换了名字。
-  if (v === "detail") return "latency"
-  if (v === "classic" || v === "latency" || v === "detailed" || v === "plain" || v === "compact") return v
-  return DEFAULTS.cardStyle
+  return cardStyleOrNull(v) ?? DEFAULTS.cardStyle
 }
 
 /**
@@ -113,14 +129,15 @@ export function cardStyleOf(v: unknown): ThemeConfig["cardStyle"] {
  * × 概览卡片三态（不显示 / 原版 / 预算版）里真的用得上的组合。
  *
  * 读到没有 `listTop` 的旧配置就按两个开关的组合迁过来：不迁的话，站长开着的那一行会静默消失。
- * 1.5.1 起默认值从 `none` 改成 `both`（两个都显示·概览卡片原版）——只影响**从没存过这两项**的
- * 站点：新装的开箱就有那两行，站长自己关掉的照旧关着（见下面 `legacy` 那一段）。
+ * 默认值两次改过：1.5.1 从 `none` 改成 `both`，1.24.0（跟 jikasei 同步）改成 `bothBudget`
+ * （两个都显示·概览卡片价值版）——只影响**从没存过这两项**的站点：新装的开箱就有那两行，
+ * 站长自己关掉的照旧关着（见下面 `legacy` 那一段）。
  */
 export function listTopOf(v: unknown, saved: { showSummary?: unknown; showGroupTabs?: unknown } = {}): ThemeConfig["listTop"] {
   if (v === "none" || v === "groups" || v === "summary" || v === "budget" || v === "both" || v === "bothBudget") return v
   // 旧版（≤1.4.0）：两个布尔开关，四种组合正好对应这一档的四个取值。
   // ★只有**真的存过**这两个键时才按老开关迁：一个键都没有（新装、或从没动过这一格）落回默认，
-  // 默认 1.5.1 起是「两个都显示·概览卡片原版」，这类站点跟着新默认走。
+  // 这类站点跟着新默认走（现为「两个都显示·概览卡片价值版」）。
   // 两个老键都在、且都是 false 的（站长自己关的那一种）继续落 `none`——默认值变了也不给他开回来。
   const legacy = saved.showSummary !== undefined || saved.showGroupTabs !== undefined
   if (legacy) {
