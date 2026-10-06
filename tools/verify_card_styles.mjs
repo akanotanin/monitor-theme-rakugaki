@@ -505,11 +505,15 @@ let classicStyle = null
 const DEFAULT_STYLE = JSON.parse(readFileSync('theme.json', 'utf8')).config.find((f) => f.key === 'cardStyle').default
 for (const [cfg, tag] of [[{}, 'empty'], [{ cardStyle: 'bogus' }, 'bogus']]) {
   const { dom, ping } = await render({ listTop: 'none', ...cfg }, tag)
-  // 默认档 2026-10-06 起是「详细」：认不出的值要落到它（读数盒 + 三网延迟块都在），不是掉回「简约」。
-  check(`非法值 ${tag} → 回落出厂默认档「${DEFAULT_STYLE}」`,
-    DEFAULT_STYLE === 'detailed'
-      ? dom.infoBox === 3 && dom.polylines === 3 * dom.cards && ping === 2
-      : dom.netRow === 1 && dom.netGrid === 0 && dom.infoBox === 0 && ping === 0,
+  // 认不出的值要落到**出厂默认档**那一档的形状上（按 theme.json 现读的 default 分档断言，
+  // 默认档换了这里跟着换，不会写成"只认某一档"）。
+  //   经典（现默认）：底部 2×2 四格、不发延迟；详细：三枚读数盒 + 三网延迟块。
+  const shape = DEFAULT_STYLE === 'detailed'
+    ? dom.infoBox === 3 && dom.polylines === 3 * dom.cards && ping === 2
+    : DEFAULT_STYLE === 'classic'
+      ? dom.netGrid === 1 && dom.netRow === 0 && dom.infoBox === 0 && dom.polylines === 0 && ping === 0
+      : dom.netRow === 1 && dom.netGrid === 0 && dom.infoBox === 0 && ping === 0
+  check(`非法值 ${tag} → 回落出厂默认档「${DEFAULT_STYLE}」`, shape,
     `默认档 ${DEFAULT_STYLE} / 网络行 ${dom.netRow} / 四格 ${dom.netGrid} / polyline ${dom.polylines} / 盒 ${dom.infoBox} / 请求 ${ping}`)
 }
 

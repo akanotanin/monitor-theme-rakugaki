@@ -2,7 +2,7 @@
 // 跑法同另外几个：`npm test`（Node 自己剥类型，不需要 runner）。没有任何东西 import 它，不进 bundle。
 //
 // 重点在三处容易静默出错的迁移：
-//   1. cardStyle：≤1.2.9 的 "detail" 现在叫 "latency"，1.9.0 起多了 "compact"，1.1.0 起多了 "plain"（2026-10-06 起默认档是 "detailed"）;
+//   1. cardStyle：≤1.2.9 的 "detail" 现在叫 "latency"，1.9.0 起多了 "compact"，1.1.0 起多了 "plain"（2026-10-06 起默认档是 "classic"）;
 //   2. listTop：≤1.4.0 是两个布尔开关（showSummary / showGroupTabs），1.5.0 合成四选一，
 //      1.5.1 默认值从 none 改成 both（两个都显示·概览卡片原版）;
 //   3. farmUrl：≤1.5.0 是两个键（showFarmEntry + farmUrl），1.6.0 并成一个三态键。
@@ -27,8 +27,8 @@ function eq(got: unknown, want: unknown, what: string) {
 // ── cardStyle：旧名迁移 ───────────────────────────────────────────────
 eq(cardStyleOf("detail"), "latency", '旧值 "detail" 迁到 "latency"')
 for (const v of ["classic", "latency", "detailed", "plain", "compact"]) eq(cardStyleOf(v), v, `cardStyle 保留 ${v}`)
-eq(cardStyleOf("nope"), "detailed", "cardStyle 认不出的值回落 DEFAULTS.cardStyle（现为「详细」）")
-eq(cardStyleOf(undefined), "detailed", "cardStyle 没存过回落 DEFAULTS.cardStyle（现为「详细」）")
+eq(cardStyleOf("nope"), "classic", "cardStyle 认不出的值回落 DEFAULTS.cardStyle（现为「经典」）")
+eq(cardStyleOf(undefined), "classic", "cardStyle 没存过回落 DEFAULTS.cardStyle（现为「经典」）")
 
 // ── cardStyleOrNull：访客自己挑的那一档（认不出来是 null = 没挑过，不是回落默认）──
 eq(CARD_STYLES, ["classic", "plain", "latency", "detailed", "compact"], "五档的顺序（顶栏菜单按它排）")
@@ -40,7 +40,7 @@ eq(cardStyleOrNull(""), null, "空串 → null")
 eq(cardStyleOrNull(3), null, "数字 → null（localStorage 里什么字符串都可能）")
 eq(cardStyleOf(undefined), cardStyleOrNull(undefined) ?? DEFAULTS.cardStyle, "cardStyleOf 与 cardStyleOrNull 是同一套判据")
 eq(CARD_STYLES.length, 5, "就是五种形态")
-eq(DEFAULTS.cardStyle, "detailed", "默认档是「详细」")
+eq(DEFAULTS.cardStyle, "classic", "默认档是「经典」")
 
 // ── listTop：六选一本身就认 ───────────────────────────────────────────
 const TOPS = ["none", "groups", "summary", "budget", "both", "bothBudget"] as const
@@ -65,8 +65,8 @@ eq(DEFAULTS.listTop, "bothBudget", "列表页顶部默认「两个都显示·概
 const themeJson = JSON.parse(readFileSync(new URL("../../theme.json", import.meta.url), "utf8"))
 eq(themeJson.config.find((f: { key?: string }) => f.key === "listTop")?.default, "bothBudget",
   "theme.json 的 listTop 默认值同步为 bothBudget")
-eq(themeJson.config.find((f: { key?: string }) => f.key === "cardStyle")?.default, "detailed",
-  "theme.json 的 cardStyle 默认值同步为 detailed")
+eq(themeJson.config.find((f: { key?: string }) => f.key === "cardStyle")?.default, "classic",
+  "theme.json 的 cardStyle 默认值同步为 classic")
 
 // ── 三个布尔是六选一的投影 ───────────────────────────────────────────
 // 1.10.0 多出的 budget / bothBudget 只在「概览卡片长什么样」上有别：前两个布尔与 summary / both 一致。
