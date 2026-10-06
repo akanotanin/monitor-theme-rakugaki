@@ -249,6 +249,45 @@ for (const field of entries.filter((e) => e.type !== 'title' && e.help)) {
 // 压成一行就只能删掉站长唯一的说明书。所以门槛定在 ≤2 行——四五行的退化（半宽那份）照样报错。
 check('排版：每项说明至多两行（没有折成四五行的）', wrapped.length === 0, wrapped.join('、') || '全部 ≤2 行')
 
+// 「卡片形态」这一格的**初值**是站长唯一看得见的那一处，也是最容易只改一半的地方：
+// 面板按 theme.json 现画（初值 = `saved[key] ?? default`），页面按 src/lib/site-settings.ts 的
+// DEFAULTS 兜底——只改一处就是「后台显示简约、页面还是经典」，而两边都不报错。两条一起断：
+//   ① 真面板里那格画出来的值 = theme.json 的 default（下拉框上的字也必须是那一档的名字）；
+//   ② 那份 default 与代码里的 DEFAULTS.cardStyle 同值。
+// **改默认值时先拿改动前的 theme.json 跑一遍**：那时喂进去的是旧 default（经典）而代码已是新值，
+// 第 ② 条必须 FAIL；换成新 manifest 才全 PASS。
+const styleField = entries.find((e) => e.key === 'cardStyle') || {}
+const styleDefault = String(styleField.default || '')
+const styleLabel = String((styleField.options || []).find((o) => o.value === styleDefault)?.label || '')
+await openGroup((groups.find((g) => g.fields.includes(styleField)) || {}).label ?? '')
+// hub 对 `type: select` 同时画一份真 `<select>` 和一份 Radix combobox，两份的文案都来自 manifest。
+const picker = await js(`(() => {
+  const dlg = document.querySelector('[role="dialog"]')
+  if (!dlg) return null
+  const sel = [...dlg.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.value === ${JSON.stringify(styleDefault)}))
+  if (sel) return { kind: 'select', value: sel.value, text: ((sel.selectedOptions[0] || {}).textContent || '').trim(),
+    options: [...sel.options].map((o) => [o.value, (o.textContent || '').trim()]) }
+  const btn = [...dlg.querySelectorAll('button[role="combobox"], [data-slot="select-trigger"]')].find((b) => /简约|经典|延迟|详细|紧凑/.test(b.innerText || ''))
+  return btn ? { kind: 'combobox', value: null, text: (btn.innerText || '').trim(), options: [] } : null
+})()`)
+check('「卡片形态」那格的下拉框画出来了（找不到要报 FAIL，不能静默通过）', !!picker, JSON.stringify(picker))
+if (picker) {
+  check(`真面板里那格的初值 = theme.json 的 default（${styleDefault}）`,
+    picker.kind === 'select' ? picker.value === styleDefault : picker.text.includes(styleLabel.slice(0, 2)),
+    `${picker.kind} / ${picker.value} / ${picker.text.slice(0, 40)}`)
+  check('下拉框上显示的是那一档的名字（没停在上一版的默认档上）',
+    styleLabel !== '' && picker.text.startsWith(styleLabel.slice(0, 2)), `${picker.text.slice(0, 40)} ← 「${styleLabel.slice(0, 2)}」`)
+  if (picker.kind === 'select') {
+    check('五个选项的文案与 theme.json 逐字同序',
+      JSON.stringify(picker.options) === JSON.stringify((styleField.options || []).map((o) => [o.value, o.label])),
+      JSON.stringify(picker.options))
+  }
+}
+const codeBlock = (readFileSync('src/lib/site-settings.ts', 'utf8').match(/export const DEFAULTS[^=]*=\s*\{([\s\S]*?)\n\}/) || [])[1] || ''
+const codeStyle = (codeBlock.match(/cardStyle\s*:\s*"([^"]+)"/) || [])[1] || ''
+check('theme.json 的 default 与代码里 DEFAULTS.cardStyle 同值（只改一处＝后台一套、页面一套）',
+  codeStyle !== '' && codeStyle === styleDefault, `代码 ${codeStyle || '没找到'} / manifest ${styleDefault || '没声明'}`)
+
 // 留档截图前回到第一组：上面的检查会一组组点过去，停在哪一组取决于断言顺序，
 // 截图要的是「稳定可复现的那一屏」而不是「最后一个被点到的那一屏」。
 if (hasNav && groups.length) await openGroup(groups[0].label)

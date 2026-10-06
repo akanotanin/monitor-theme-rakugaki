@@ -65,7 +65,7 @@
       "type": "select",
       "key": "cardStyle",
       "label": "卡片形态",
-      "default": "classic",
+      "default": "plain",
       "options": [
         {
           "value": "classic",

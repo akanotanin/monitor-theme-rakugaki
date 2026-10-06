@@ -20,7 +20,7 @@
 //   详细   —— 元信息行 + 三枚读数盒 + 三网延迟块；标题行不再有状态点；网格不再有 xl 四列
 //   紧凑   —— 一张表、一行一台，表头与列随屏宽收放；不发 ping 请求
 //   旧值   —— 配置里存 detail（1.2.9 的值）时必须渲染成「延迟」，不能掉回经典
-//   非法值 —— 回落「简约」（1.1.0 起的默认档；含不发延迟请求）
+//   非法值 —— 回落**出厂默认档**（现读 theme.json 的 cardStyle.default，不写死；含不发延迟请求）
 //
 // 判据全部走 DOM（类名/属性/文本），不靠看图。
 //
@@ -507,7 +507,7 @@ for (const [cfg, tag] of [[{}, 'empty'], [{ cardStyle: 'bogus' }, 'bogus']]) {
   const { dom, ping } = await render({ listTop: 'none', ...cfg }, tag)
   // 认不出的值要落到**出厂默认档**那一档的形状上（按 theme.json 现读的 default 分档断言，
   // 默认档换了这里跟着换，不会写成"只认某一档"）。
-  //   经典（现默认）：底部 2×2 四格、不发延迟；详细：三枚读数盒 + 三网延迟块。
+  //   简约（现默认）/ 经典：底部那行在、无读数盒、不发延迟；详细：三枚读数盒 + 三网延迟块。
   const shape = DEFAULT_STYLE === 'detailed'
     ? dom.infoBox === 3 && dom.polylines === 3 * dom.cards && ping === 2
     : DEFAULT_STYLE === 'classic'
