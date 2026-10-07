@@ -5,14 +5,17 @@ import { CardStyleMenu } from "@/components/CardStyleMenu"
 import { NodeCard } from "@/components/NodeCard"
 import { CompactList } from "@/components/CompactList"
 import { Globe } from "@/components/Globe"
+import { SearchBox, SearchRow } from "@/components/SearchBox"
 import { SummaryCards } from "@/components/Summary"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, groupView, useNodes } from "@/lib/api"
 import { regionView } from "@/lib/globe"
 import { hasDetailRemarks } from "@/lib/notes"
+import { searchNodes } from "@/lib/search"
+import { hasGroupTabs, hasSummary, isBudgetLayout, useCardStyle, useGlobeVisible, useLocalFarm, useThemeConfig } from "@/lib/theme-config"
+import { isBeijingNight, resolveDark, type ThemeMode } from "@/lib/site-settings"
 import type { RemarkPlacement } from "@/lib/site-settings"
-import { DEFAULTS, FARM_OFF, hasGroupTabs, hasSummary, isBudgetLayout, useCardStyle, useGlobeVisible, useLocalFarm, useSiteFavicon, useThemeConfig } from "@/lib/theme-config"
 import { FarmIcon } from "@/components/FarmIcon"
 
 type Me = {
@@ -27,6 +30,10 @@ type Me = {
 // The tab title cache key, shared with the inline script in index.html. Kept as the
 // theme's own key so two themes on one origin cannot fight over it.
 const TITLE_CACHE_KEY = "rakugaki:site_name"
+
+// 页脚署名（右下角那行）里指向的源码仓库 —— 与 theme.json 的 `url` 是同一个地址
+// （面板卡片上的「源码」也指这里）。两处一起改。
+const REPO_URL = "https://github.com/akanotanin/monitor-theme-rakugaki"
 
 // Split out because recharts is most of this bundle and the list page draws no
 // chart. The landing page is 242 kB rather than 629 kB (77 kB gzipped against
@@ -136,7 +143,7 @@ const DARK_MEDIA = matchMedia("(prefers-color-scheme: dark)")
  * landing between the first render and the effect that would have attached the
  * listener is otherwise never heard, and the next one is a day away.
  */
-function useTheme() {
+function useTheme(siteMode: ThemeMode) {
   const [saved, setSaved] = useState(() => localStorage.getItem("theme"))
   const system = useSyncExternalStore(
     (notify) => {
@@ -145,47 +152,72 @@ function useTheme() {
     },
     () => DARK_MEDIA.matches,
   )
-  const dark = saved ? saved === "dark" : system
+  // 「随北京时间自动」要自己跨过 19:00 / 07:00：每分钟问一次现在几点（几乎不要钱），
+  // 到点前后最多差一分钟。别的档不挂这个定时器。
+  const [night, setNight] = useState(() => isBeijingNight())
+  useEffect(() => {
+    if (siteMode !== "auto") return
+    setNight(isBeijingNight())
+    const timer = setInterval(() => setNight(isBeijingNight()), 60_000)
+    return () => clearInterval(timer)
+  }, [siteMode])
+  // 站长那一档是**默认**；访客点过那枚图标（localStorage 里有 `theme`）就以他的为准。
+  const fromSite = siteMode === "auto" ? night : resolveDark(siteMode, system)
+  const dark = saved ? saved === "dark" : fromSite
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
+    /**
+     * 手机浏览器那一圈（地址栏 / 状态栏）的配色（`theme-color`）跟着**页面实际用的**明暗走。
+     *
+     * index.html 里那两份是静态值、按**系统**明暗挑的；而本站的「随北京时间自动」在夜里
+     * 与系统相反时两边会打架 —— 所以这里先把那两份摘掉，再挂一份没有 media 的。
+     * 颜色取 `--background` 的**实际值**（oklch 交给 canvas 读回 sRGB），不手抄 hex，免得跟 token 漂移。
+     */
+    const head = document.head
+    for (const old of head.querySelectorAll('meta[name="theme-color"]')) old.remove()
+    const meta = document.createElement("meta")
+    meta.name = "theme-color"
+    let color = dark ? "#0d0c0a" : "#fafafa"
+    const probe = document.createElement("canvas")
+    probe.width = probe.height = 1
+    const ctx = probe.getContext("2d")
+    if (ctx) {
+      // 先铺兜底色：老浏览器不认 oklch 时这次赋值会被忽略，留下的就是它。
+      ctx.fillStyle = color
+      ctx.fillStyle = getComputedStyle(document.body).backgroundColor
+      ctx.fillRect(0, 0, 1, 1)
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+      color = `rgb(${r}, ${g}, ${b})`
+    }
+    meta.content = color
+    head.append(meta)
   }, [dark])
 
   return [
     dark,
     () => {
       const next = dark ? "light" : "dark"
-      localStorage.setItem("theme", next)
-      setSaved(next)
+      // 点成与站长那一档一致时**删掉记录**（= 重新跟着站长走，与 useGlobeVisible 同一套口径）。
+      const record = (next === "dark") === fromSite ? null : next
+      try {
+        if (record === null) localStorage.removeItem("theme")
+        else localStorage.setItem("theme", record)
+      } catch {
+        // 存储被禁用（隐私模式）：这次会话照样切，只是记不住。
+      }
+      setSaved(record)
     },
   ] as const
 }
 
-/**
- * 站内那套养鸡场（同域）用当前标签页打开就好，它属于本站导航；指向别的站时才开新标签页——
- * 默认值就是那样的一座公开养鸡场，不该把访客从状态页带走。
- */
-function farmLinkProps(url: string) {
-  try {
-    if (new URL(url, location.href).origin === location.origin) return {}
-  } catch {
-    // 地址本身不合法就按外链处理：让它自己在新标签页里报错，别把本站带跑。
-  }
-  return { target: "_blank", rel: "noreferrer" }
-}
-
 export default function App() {
-  const [dark, toggleTheme] = useTheme()
-  const { config, loaded } = useThemeConfig()
-  // 站长没填地址时，自动认本站约定的那个位置（`/chicken/`）有没有养鸡场；
-  // 填了就以他填的为准，填 `off` 则一律不显示。**等设置到了再探**（loaded）——不然
-  // 「关掉入口」「填了自己地址」的站都会白探一次，那两次探测还会让护栏分不清「该探没探」。
-  const farmAuto = config.farmUrl === ""
-  const detectedFarm = useLocalFarm(loaded && farmAuto)
-  const farmUrl = farmAuto ? detectedFarm : config.farmUrl === FARM_OFF ? "" : config.farmUrl
-  // 顶栏那张站标最终用的是哪个地址（加载成功才知道），标签页图标跟着它走。
-  const [settledIcon, setSettledIcon] = useState<string | null>(null)
-  useSiteFavicon(settledIcon)
+  const config = useThemeConfig()
+  // 明暗：站长那一档（`themeMode`）当默认，访客点过顶栏那枚图标就以他的为准。
+  const [dark, toggleTheme] = useTheme(config.themeMode)
+  // 顶栏那枚入口图标（1.25.0 起没有设置项）：挂载即探一次本站约定的 `/chicken/`，
+  // 装了那座小鸡农场才出现、没装不占位（判据是内容而不是状态码，见 useLocalFarm）。
+  const farmUrl = useLocalFarm()
   const [me, setMe] = useState<Me | null>(null)
   const [meError, setMeError] = useState("")
   const { nodes, error, closed } = useNodes()
@@ -196,8 +228,28 @@ export default function App() {
   const [region, setRegion] = useState<string | null>(null)
   // 访客自己的两个偏好（都只存在他自己浏览器里，见 @/lib/theme-config）：
   // 地球看不看，以及列表用哪种卡片形态 —— 后者没选过时跟着站长的设置走。
-  const [globeOn, toggleGlobe] = useGlobeVisible()
+  const [globeOn, toggleGlobe] = useGlobeVisible(config.globeOn)
   const [cardStyle, chooseStyle] = useCardStyle(config.cardStyle)
+  // 顶栏那个搜索框：词与「窄屏那一行展开了没」都留在这儿 —— 进详情页再回来，
+  // 搜到的那几台还在（与分组标签、地区选择同一套「看哪几台」的记忆）。
+  const [query, setQuery] = useState("")
+  const [searchOpen, setSearchOpen] = useState(false)
+  // 收起搜索（Esc 在空框上按的那一下）。**不清词**：收起是「让出顶栏那点宽度」，不是「别筛了」
+  // —— 词留着，点开一台机器看清了再回来，那几台还在（收起态会看不见词，所以那枚放大镜会提色、
+  // 悬停说明里带上词与命中数，见 SearchBox）。
+  const collapseSearch = () => setSearchOpen(false)
+  // 窄屏那枚方形图标＝顶栏下面那一行的开关；桌面什么都不用做（CSS 的 :focus-within 自己长开）。
+  // 用 matchMedia 而不是把它存成 state：这里只在事件里问一次，没必要为它挂一条媒体查询订阅。
+  const onSearchActivate = () => {
+    const narrow = typeof matchMedia === "function" && matchMedia("(max-width: 639px)").matches
+    setSearchOpen((was) => (narrow ? !was : false))
+  }
+  // 窄屏那一行收起：连词一起清掉 —— 那一行是「临时张开的一块地方」，收起后顶栏上看不见它，
+  // 留着词就成了看不见的筛选。（桌面那套不一样：收起态本来就是那枚图标，词留着有据可依。）
+  const closeSearchRow = () => {
+    setSearchOpen(false)
+    setQuery("")
+  }
 
   const loadMe = useCallback(() => {
     // `|| "..."` because an empty message reads as no error: api() falls back to
@@ -278,7 +330,11 @@ export default function App() {
   //   · 下面的列表再按地区收窄一层（`listView`）。
   // 这样「上头写着 JP 4 台、下面只剩 2 张卡片」不会出现：地球是分组的地图，不是列表的地图。
   const regions = regionView(view.shown, region)
-  const listView = { ...view, shown: regions.shown }
+  // 再叠一层搜索（口径见 @/lib/search）：这一层与地区筛选同一套——**下面那张列表与上面
+  // 那行概览卡片一起收窄**，地球仍然是「分组的地图」（它画的是分组里有哪些地方，
+  // 不是搜索结果热力图；地区列表点一行照样能把列表收窄到那个地区）。
+  const found = searchNodes(regions.shown, query)
+  const listView = { ...view, shown: found.shown }
 
   // `/node/{id}` is a page people bookmark and share, so the tab needs the node's
   // name. The site name rather than a fixed string, since the hub lets an operator
@@ -316,18 +372,44 @@ export default function App() {
   if (!me.public_page && !me.authed) return null
 
   return (
-    <div className="min-h-svh">
+    // 纵向排下来、页脚吊在最后（main 吃满剩余高度）：机器少、内容比一屏短时，
+    // 署名也落在屏幕的最底下，而不是紧贴在列表底下浮在半空中。
+    <div className="flex min-h-svh flex-col">
       <header className="sk-nav sticky top-0 z-10 backdrop-blur">
-        <div className="mx-auto flex max-w-[1280px] items-center gap-3 px-4 py-3 sm:px-6">
+        {/* ★ 窄屏的横向余量很紧（390 宽上这一行原本要 407px，整页因此能横向拖动）。现在按
+            「**站名优先展开、图标自己滑**」分：站名那格 max-w-[55%]（正常名字完整显示，
+            只有长到离谱才轮到 truncate），搜索钉在它右边，剩下几枚图标装进一条能横向滑动的
+            条带里 —— 与下面那行分组标签同一套做法：装不下就滑，不裁字、也不把整页撑宽。 */}
+        <div className="mx-auto flex max-w-[1280px] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
           {/* The site name is the way back to the list, so a node page needs
-              no back button of its own. A 36px disc of the site's own icon leads
-              it; the address is a theme setting, the built-in one is the
-              fallback. */}
-          <button className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-80" onClick={() => go(null)}>
-            <SiteIcon key={config.siteIcon} src={config.siteIcon} onSettle={setSettledIcon} />
+              no back button of its own. A 36px disc of the site's icon leads
+              it — `/favicon.svg` is the one address that answers with the
+              panel's site icon (or the theme's own when none is set). */}
+          <button className="tap tap-8 flex max-w-[55%] shrink-0 items-center gap-2.5 transition-opacity hover:opacity-80" onClick={() => go(null)}>
+            <SiteIcon />
             <span className="font-display truncate text-[17px] font-semibold tracking-[-.01em]">{me.site_name || "Monitor"}</span>
           </button>
           <div className="flex-1" />
+          {/* 搜索（名称 / 地区 / 系统）：只长在列表页 —— 它收窄的就是下面那张列表，
+              站在某台机器的详情页里按它没有落点。收起时是一枚方形图标，点开就地长成输入框
+              （窄屏是顶栏下面多一行，见 SearchRow）。 */}
+          {open === null && (
+            <SearchBox
+              value={query}
+              onChange={setQuery}
+              onActivate={onSearchActivate}
+              onClose={collapseSearch}
+              hits={found.hit}
+            />
+          )}
+          {/* ★ 图标条带：装不下就**横向滑动**（与下面那行分组标签同一套做法）。
+              py/px 是给 .tap 那圈 ±6px 的命中区留地方 —— 被 overflow 裁掉的话命中区只剩 36
+              （护栏会当场报出来）；横向**不加**负 margin：那会让条带的盒子压到搜索那一格上，
+              把搜索的命中区吃掉一半（实测 44 → 33）。条带里的间距固定 12px（与桌面同）：两枚
+              图标的命中区各向外 6px，正好在缝里相接，不多不少（8px 会重叠、护栏也会报）。
+              滑动条藏起来（见 index.css 的 .header-tools）：它长在 sticky 顶栏里，露出来
+              就是一条横杠；「还能滑」的提示由露一半的那枚图标给，与分组标签行一致。 */}
+          <div className="header-tools -my-1.5 flex min-w-0 items-center gap-3 overflow-x-auto px-1.5 py-1.5">
           {/* The panel is a separate app built into the hub, not part of this
               theme, so this is a navigation rather than a route. Icon only, with
               the wording in the tooltip: this row is a strip of icons, and a
@@ -366,22 +448,28 @@ export default function App() {
               <GlobeIcon />
             </Button>
           )}
-          {/* 养鸡场入口：站长填了地址就指向那里；留空则本站 `/chicken/` 上真装了养鸡场
-              才出现（自动探测，见 useLocalFarm）；填 `off` 则一律不出现。 */}
+          {/* 入口图标：本站 `/chicken/` 上真装了那座小鸡农场才出现（自动探测，见 useLocalFarm）；
+              同域，就在当前标签页里打开。 */}
           {farmUrl && (
             <Button variant="ghost" size="icon" asChild className="sk-icon">
-              <a href={farmUrl} title="养鸡场" aria-label="养鸡场" {...farmLinkProps(farmUrl)}>
+              <a href={farmUrl} title="养鸡场" aria-label="养鸡场">
                 <FarmIcon />
               </a>
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="sk-icon" onClick={toggleTheme} title="切换主题">
+          <Button variant="ghost" size="icon" className="sk-icon" onClick={toggleTheme} title="切换主题" aria-label="切换主题">
             {dark ? <Sun /> : <Moon />}
           </Button>
+          </div>
         </div>
+        {/* 窄屏点开搜索后在顶栏下面多出来的那一行：摆成 header 的直接子节点，
+            于是它跟着这个 sticky 块一起吸顶（滚动时不会留在列表里被滚走）。 */}
+        {open === null && searchOpen && (
+          <SearchRow value={query} onChange={setQuery} onClose={closeSearchRow} />
+        )}
       </header>
 
-      <main className="mx-auto max-w-[1280px] space-y-5 px-4 py-4 sm:px-6">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 space-y-5 px-4 py-4 sm:px-6">
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {open !== null ? (
@@ -417,16 +505,24 @@ export default function App() {
           <>
             {/* 概览卡片行：设置里没选它时整个不挂载（不是藏起来），首屏与没有这个功能时一致。
                 「月度预算剩余价值版」只是同一行换一副面孔，组件另收一个 finance 开关。 */}
-            {hasSummary(config.listTop) && <SummaryCards nodes={regions.shown} group={view.current} finance={isBudgetLayout(config.listTop)} />}
-            {/* 节点地球：概览卡片之下、列表之上。 */}
+            {hasSummary(config.listTop) && <SummaryCards nodes={found.shown} group={view.current} finance={isBudgetLayout(config.listTop)} searching={found.active} />}
+            {/* 节点地球：概览卡片之下、列表之上（上游就是这个次序）。 */}
             {globeOn && (
               <Globe nodes={view.shown} dark={dark} region={regions.current} onRegion={setRegion} onOpen={go} onWarm={warmDetail} />
             )}
-            {/* 按地区筛完一台都不剩：说清楚是筛选造成的，并指回去哪儿取消 ——
-                否则访客只看到一大片空白，会以为站点坏了。 */}
-            {globeOn && regions.shown.length === 0 && view.shown.length > 0 && (
-              <p className="sk-hand text-base">这个地区里当前没有节点 —— 点上面那一列的「全部」取消筛选。</p>
-            )}
+            {/* 一台都剩不下时说清楚是谁把它筛没的，并指回去哪儿取消 —— 否则访客只看到
+                一大片空白，会以为站点坏了。搜索那一层排在前面：它是最后叠上去、也是访客
+                刚刚动手的那一层（文案写「当前筛选下」，地区那层也在时同样成立）。 */}
+            {found.active && found.shown.length === 0 ? (
+              <p className="sk-hand text-base">
+                当前筛选下没有匹配「{found.query.trim()}」的节点 —— 名称、地区、系统三处都能搜
+                （多个词用空格隔开，要同时命中）；点搜索框里那枚 × 清掉。
+              </p>
+            ) : globeOn && regions.shown.length === 0 && view.shown.length > 0 ? (
+              <p className="sk-hand text-base">
+                这个地区里当前没有节点 —— 点上面那一列的「全部」取消筛选。
+              </p>
+            ) : null}
             <NodeList view={listView} group={group} onGroup={setGroup} onOpen={go} onWarm={warmDetail}
               latencyLines={config.pingLines}
               cardStyle={cardStyle}
@@ -435,33 +531,48 @@ export default function App() {
           </>
         )}
       </main>
+
+      {/* 页脚署名：一行浅色小字。桌面在右下角（右对齐、比内容右沿往左收 12px）；手机上**收进一个
+          带上分割线的页脚带**里居中 —— 2026-10-07 站长两轮反馈：先嫌「右下角一行孤零零的灰字
+          像水印」（改居中），再说「还是得改个位置、要和谐美观不突兀」。根因是它**没有结构**：
+          一行灰字悬在卡片下面，既不像页脚、也不像卡片的一部分。加一条 1px 上分割线（与顶栏的
+          border-b 呼应，页面上下就都框住了），留白按「卡→线 24px、线→字 16px、字→底 20px」
+          拉开，它才读成一个明确的页脚区。分割线只出现在窄屏（<640px，与署名居中的断点同一档）
+          —— 为手机改的东西不落到电脑端，桌面维持原样。
+          「rakugaki」那截点开去本主题的源码仓库 —— 新标签页打开，别把访客从状态页带走
+          （链接地址与 theme.json 的 url 是同一个，见上面的 REPO_URL）。样式见 index.css 的 .theme-credit。 */}
+      <footer className="mx-auto mt-2 w-full max-w-[1280px] border-t px-4 pb-5 pt-4 sm:mt-0 sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-1">
+        <p className="theme-credit text-center sm:pr-3 sm:text-right">
+          Theme by{" "}
+          <a href={REPO_URL} target="_blank" rel="noreferrer">
+            rakugaki
+          </a>
+        </p>
+      </footer>
     </div>
   )
 }
 
 /**
- * 顶栏的圆形站标。默认用主题自带的 `/site-icon.png`，站长可以在后台换成任意地址；
- * 换的那个取不到就退回自带这张，两张都取不到就不占位——不留一枚破图。
+ * 顶栏的圆形站标：**就是站点图标本身**，而且用的是**标签页那条 `<link rel="icon">` 的地址**。
+ *
+ * hub 1.4.0 起这条路径由面板「设置 → 站点图标」管（没设时回落到主题自带的同名文件），
+ * 而且 hub 送 index.html 时会把它改写成 `?v=<内容摘要>` —— 所以「取哪张图」这件事在静态
+ * HTML 里就定下来了，主题只要沿用同一条地址即可：
+ *
+ *   · 页头与标签页是**同一个 URL** → 浏览器只取一次、缓存共用一份（弱链路上尤其重要，
+ *     以前两处各取一次会把页头那张挤掉）；
+ *   · 站长换了图，hub 给的版本号就变了，浏览器自己会重新取，不需要任何早跑脚本。
+ *
+ * 取不到就不占位：不留一枚破图。
  */
-function SiteIcon({ src, onSettle }: { src: string; onSettle: (icon: string | null) => void }) {
-  // 去重：站长填回默认地址时只有一个候选，出错就没有下一个。
-  const candidates = [...new Set([src, DEFAULTS.siteIcon].filter(Boolean))]
-  const [step, setStep] = useState(0)
-  // 站长那一项到得比首帧晚：调用处用 key={src} 让它重挂，候选与步骤都从头来，
-  // 不用在 effect 里回头改状态（那会多一轮渲染）。
-  const current = candidates[step]
-  // 候选全试完还把 onSettle 留在 null —— 标签页图标就维持静态值，不留破图。
-  useEffect(() => { if (!current) onSettle(null) }, [current, onSettle])
-  if (!current) return null
+function SiteIcon() {
+  const [href] = useState(() => document.querySelector('link[rel~="icon"]')?.getAttribute("href") || "/favicon.svg")
+  const [broken, setBroken] = useState(false)
+  if (broken) return null
   return (
     <span className="sk-mark size-9 shrink-0 overflow-hidden">
-      <img
-        src={current}
-        alt=""
-        className="size-full object-cover"
-        onLoad={() => onSettle(current)}
-        onError={() => setStep((n) => n + 1)}
-      />
+      <img src={href} alt="" className="size-full object-cover" onError={() => setBroken(true)} />
     </span>
   )
 }
@@ -473,6 +584,34 @@ function SiteIcon({ src, onSettle }: { src: string; onSettle: (icon: string | nu
 //
 // 「该显示哪几台」与标签行的内容都在 App 里算好（`view`，见 @/lib/api 的 groupView）：
 // 概览卡片吃的是同一份，切分组时上面那行与下面这批卡片一起变。
+/**
+ * 列表**分批挂载**：先画一屏的量，剩下的分帧补上。
+ *
+ * 为什么不虚拟滚动：拿 100 台的夹具量过 —— 静置时每 5 秒一次的重渲染长任务是 **0**（卡片不多时
+ * 重渲染本来就是免费的），DOM 11457 也撑得住；**唯一**真花钱的是首屏那一次 **255ms** 的长任务
+ * （100 张卡片一次性挂上去）。虚拟滚动要处理变高卡片 + 响应式列数，改动大、风险高，却只为解决
+ * 一个不存在的稳态开销。把首屏那次摊成十几小块，效果一样、代价小得多。
+ *
+ * 每块 12 张（约 30ms，短于 50ms 的长任务线），块与块之间用 `setTimeout(0)` 让浏览器先画一帧。
+ * 少于一块的量（≤24 台）完全不改变行为 —— 护栏用的都是小夹具，不受影响。
+ */
+function useProgressive(total: number, first = 24, step = 12): number {
+  const [limit, setLimit] = useState(() => Math.min(total, first))
+  // 换了筛选/搜索（total 变了），列表换了，重新从第一批开始 —— 渲染期直接比，不放进 effect
+  // （effect 里同步 setState 会白白多跑一轮渲染）。
+  const [seenTotal, setSeenTotal] = useState(total)
+  if (seenTotal !== total) {
+    setSeenTotal(total)
+    setLimit(Math.min(total, first))
+  }
+  useEffect(() => {
+    if (limit >= total) return
+    const timer = setTimeout(() => setLimit((n) => Math.min(total, n + step)), 0)
+    return () => clearTimeout(timer)
+  }, [limit, total, step])
+  return limit
+}
+
 function NodeList({ view, group, onGroup, onOpen, onWarm, latencyLines, cardStyle, historyDays, remarkPlacement }: {
   /** 分组求值的结果：groups / current / shown / tabs / total（App 与概览卡片共用一份）。 */
   view: ReturnType<typeof groupView>
@@ -492,14 +631,20 @@ function NodeList({ view, group, onGroup, onOpen, onWarm, latencyLines, cardStyl
   remarkPlacement: RemarkPlacement
 }) {
   const { groups, current, shown, tabs, total, showTabs } = view
+  // 首屏先画一屏的量，剩下的分帧补上（见 useProgressive）。
+  const list = shown.slice(0, useProgressive(shown.length))
   // 归一化后的值回写给 App（悬空的选中态被回落时纠正一次，见 groupView 的注释）。
   useEffect(() => {
     if (current !== group) onGroup(current)
   }, [current, group, onGroup])
   return (
     <>
+      {/* ★ 分组标签行的上下间距收紧（2026-10-07 站长说这一行夹在面板与卡片之间显得空）：
+          主容器是 space-y-5（20px），一行 36px 高的细条被它夹着就像浮着。下面那行用
+          -mt-2（上 20→12）+ mb-3（下 12）—— 它是**下面那张列表的筛选条**，贴着卡片更顺。
+          Tailwind 的 space-y 用的是 :where()（零特异性），所以这里随手覆盖得动。 */}
       {showTabs && groups.length > 0 && (
-        <div role="group" aria-label="分组" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        <div role="group" aria-label="分组" className="-mx-1 -mt-2 mb-3 flex gap-1 overflow-x-auto px-1 pb-1">
           {tabs.map(([value, label, count]) => (
             <Button
               // Group names are free text, so they carry a prefix no key of
@@ -520,10 +665,10 @@ function NodeList({ view, group, onGroup, onOpen, onWarm, latencyLines, cardStyl
       {total === 0 ? (
         <p className="sk-hand py-16 text-center text-base">还没有节点</p>
       ) : cardStyle === "compact" ? (
-        <CompactList nodes={shown} onOpen={onOpen} onWarm={onWarm} historyDays={historyDays} remarkPlacement={remarkPlacement} />
+        <CompactList nodes={list} onOpen={onOpen} onWarm={onWarm} historyDays={historyDays} remarkPlacement={remarkPlacement} />
       ) : (
         <div data-card-style={cardStyle} className={`grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 ${cardStyle === "detailed" ? "" : "xl:grid-cols-4"}`}>
-          {shown.map((n) => (
+          {list.map((n) => (
             <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} latencyLines={latencyLines} cardStyle={cardStyle} remarkPlacement={remarkPlacement} />
           ))}
         </div>

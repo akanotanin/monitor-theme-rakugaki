@@ -8,7 +8,6 @@
 @import "tailwindcss" source(none);
 @source "../index.html";
 @source "../src";
-@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -60,8 +59,12 @@
   /* 节点地球那三块颜色（见文件末尾的 .globe-*）：海面、陆地的淡染与圆盘边缘的暗影。
      取值照本站的纸/墨/便签一套 —— 海面用 --fill-sky 那支蓝、陆地用 --fill-oat 那支米，
      圆盘边缘用墨（不是黑），这样它与卡片、便签是同一副纸感。 */
+  /* ★陆地必须比海面明显暗：原值（213,199,176）@0.92 与海面合成后亮度只差 9.6（204.6 对 214.2），
+     只靠冷暖分开 —— 哪一块看着像「灰块」全看它周围有什么（挨着海岸线的海被深色描边衬成灰、
+     大片陆地内部反倒显得白），站长看到的就是「灰白互换」。现在陆地加深到 (190,175,150)：
+     合成后 182.7 对 214.3，差 31.6，远近都不会再认错。 */
   --globe-ocean: rgba(178, 202, 224, 0.72);
-  --globe-land: rgba(213, 199, 176, 0.92);
+  --globe-land: rgba(190, 175, 150, 0.92);
   --globe-rim: rgba(20, 20, 19, 0.18);
   --shadow-card: 6px 6px 0 var(--fill-oat);
   --shadow-pop: 9px 9px 0 var(--fill-oat);
@@ -155,8 +158,11 @@
   --ok: #8db57c;
   --warn: #d6ae5c;
   /* 暗色的地球三块：色相与亮色同一套（海面偏蓝、陆地偏暖），按暗色便签那几支取值。 */
+  /* 暗色同理：原 0.42 的陆地与海面合成后只差 12.0（80.3 对 68.3），暗底上更分不出陆海；
+     提到 0.50 后差 20.3（88.5 对 68.2）。暗色里**陆地比海面亮**（亮色里相反）——
+     暗底上的「实心」块本来就该更亮，与亮色同一套直觉。 */
   --globe-ocean: rgba(58, 92, 122, 0.62);
-  --globe-land: rgba(163, 137, 88, 0.42);
+  --globe-land: rgba(163, 137, 88, 0.5);
   --globe-rim: rgba(0, 0, 0, 0.45);
   --destructive: #e0837a;
   --background: var(--paper);
@@ -485,6 +491,7 @@
 .globe-side-title { grid-column: 1 / -1; color: var(--muted-foreground); }
 .globe-reg {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
@@ -498,10 +505,29 @@
   cursor: pointer;
 }
 .globe-reg:hover { color: var(--foreground); }
+/* ★ 地区行撑到 32（≈7mm）**只留给窄屏**：面板在那里是上下两段、手指操作，20px（4mm）
+   点不准（WCAG 2.2 的硬线是 24）。桌面用鼠标 —— 站长 2026-10-07 看过桌面之后说
+   「电脑端的地区显示改回原来那样」，于是这里按 900px 那道坎分开：桌面维持原来的行高
+   （面板也正好是 280 高的格子），窄屏才撑高。行与行之间留着 .globe-side 的 8px gap，
+   命中区不会叠到邻居身上（撑高后命中 40，正好等于行高 32 + 行距 8）。 */
+@media (max-width: 899px) {
+  .globe-reg { min-height: 32px; }
+}
 /* 「全部」独占一整行：它是一条汇总（本分组一共几台），跟具体地区并排会读成"第一个地区"。 */
 .globe-reg-all { grid-column: 1 / -1; }
 .globe-reg span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .globe-reg b { color: var(--foreground); font-weight: 500; font-variant-numeric: tabular-nums; }
+/* 地区行上的「有机器离线」小点：这台地区里有离线时挂在台数后面（全在线不出现），
+   悬停的 title 里写着「N 台 · M 台离线」。颜色跟针同一族的琥珀色。 */
+.globe-reg-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--warn);
+}
 .globe-reg[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
 .globe-reg-flag {
   display: inline-block;
@@ -513,5 +539,65 @@
   object-fit: cover;
   box-shadow: 0 0 0 1px var(--border);
 }
+/* 多台地区针边上的台数：与针同色、小一号加粗，衬一圈底色免得压在岸线上看不清。 */
+.globe-count {
+  fill: var(--warn);
+  font-size: 7px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-width: 1.6px;
+}
+
 /* 顶栏那枚开关：关掉时压暗，一眼看得出地球是关着的。 */
 .globe-toggle[aria-pressed="false"] { color: var(--muted-foreground); opacity: 0.6; }
+
+/* 页脚署名（右下角那行）：比正文的弱化色再淡一档，只作署名，不跟页面里的读数抢注意力；
+   「rakugaki」那截是本主题的源码仓库链接（地址见 App.tsx 的 REPO_URL），悬停才出下划线。 */
+/* 顶栏那条图标带（.header-tools）：装不下时横向滑动，与分组标签同一套做法。
+   滑动条藏起来 —— 它长在 sticky 顶栏里、又只在窄窗口才出现，露出来就是一条横杠；
+   「还能滑」的提示由露一半的那枚图标给（与分组标签行一致）。 */
+.header-tools { scrollbar-width: none; }
+.header-tools::-webkit-scrollbar { display: none; }
+
+.theme-credit {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.62;
+}
+.theme-credit a { color: inherit; text-decoration: none; }
+.theme-credit a:hover { text-decoration: underline; }
+
+/* 顶栏那个搜索框（src/components/SearchBox.tsx）：
+   ① `type="search"` 在 WebKit 里自带一枚小叉，关掉它 —— 框里已经有一枚自己的清空按钮，
+      两个长得差不多、做同一件事的按钮并排只会让人犹豫点哪个；
+   ② **清空那枚只在框长开着（有焦点）时出现**：收起时那一格只有 36px，放大镜已经占满，
+      再挤一枚叉就成了「两枚图标叠在一起」。展开／收起的动效由 `transition-all` 负责。 */
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+.search-field .search-clear { display: none; }
+.search-field:focus-within .search-clear { display: grid; }
+
+/* 触屏命中区：**外观一点不动，只把可点范围往外撑**。
+   手指比鼠标粗 —— Apple 的通行线是 44×44，WCAG 2.2 的硬线（2.5.8）是 24×24。
+   撑出来的那圈是 ::before，透明、不参与布局，所以排版、间距、视觉都不受影响；
+   命中测试时它算作所属元素（`document.elementFromPoint` 返回的是宿主元素）。
+   类名跟着控件自己的高度走（size-9 = 36px 等），一眼看得出撑完是多少：
+     tap-9   36×36 → 44×44（顶栏那几枚图标、搜索方框）
+     tap-8   32 高  → 44    （站名）
+     tap-10  40 高  → 44
+     tap-y-6 24 高  → 44 高，横向不动 —— 密排的分段按钮之间别互相盖住
+   地区列表（.globe-reg）行距只有 8px，上下各撑 4px 到 28px 就不重叠了，再大就得动视觉。 */
+.tap { position: relative; }
+.tap::before { content: ""; position: absolute; border-radius: inherit; }
+/* ★ .tap-9 的扩张量按本皮肤补偿过：这里的图标按钮（.sk-icon）带 1.5px 墨线边框，
+   ::before 的 inset 是相对**内边距盒**算的 —— 36 的盒子内边距盒只有 33，-4px 只撑到 41。
+   -6px 让命中区回到 44+（实测 45），邻居间距 12px 时两圈仍不相接。 */
+.tap-9::before { inset: -6px; }
+.tap-8::before { inset: -6px; }
+.tap-10::before { inset: -2px; }
+.tap-y-9::before { inset: -4px 0; }
+.tap-y-6::before { inset: -10px 0; }
+.globe-reg { position: relative; }
+.globe-reg::before { content: ""; position: absolute; inset: -4px 0; border-radius: 4px; }

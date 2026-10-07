@@ -114,12 +114,13 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
     }
   }
   if (shot.hover) {
-    // 把鼠标移到图表中间，逼出自绘 tooltip：recharts 的 tooltip 由 mousemove 触发，
+    // 把鼠标移到图表中间，逼出自绘 tooltip：自绘图的 tooltip 由 mousemove 触发，
     // 而 headless 下没法真的移动指针，只能在图表上派发一次（冒泡到 React 根监听）。
     // 先等图表本体画出来——延迟图的数据到得比资源图晚，早派发就白发一次。
-    for (let i = 0; i < 25; i++) { await sleep(400); if (await evalJS(`!!document.querySelector('.recharts-wrapper svg')`)) break }
+    // ★锚点挂主题自己的 `[data-chart]`（详情页的图早就是自绘的了，写 .recharts-* 会一直 no-chart）。
+    for (let i = 0; i < 25; i++) { await sleep(400); if (await evalJS(`!!document.querySelector('[data-chart] svg')`)) break }
     const moved = await evalJS(`(() => {
-      const svg = document.querySelector('.recharts-wrapper svg')
+      const svg = document.querySelector('[data-chart] svg')
       if (!svg) return 'no-chart'
       const r = svg.getBoundingClientRect()
       const x = r.left + r.width * 0.45, y = r.top + r.height * 0.45
@@ -130,7 +131,7 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
       return 'at ' + Math.round(x) + ',' + Math.round(y)
     })()`)
     await sleep(900)
-    const tip = await evalJS(`(() => { const t = document.querySelector('.recharts-tooltip-wrapper'); return t ? t.innerText.replace(/\\s+/g, ' ') : '(没有 tooltip)' })()`)
+    const tip = await evalJS(`(() => { const t = document.querySelector('[data-tooltip]'); return t ? t.innerText.replace(/\\s+/g, ' ') : '(没有 tooltip)' })()`)
     console.log(`  → tooltip: ${moved} | ${tip}`)
   }
   const png = await send('Page.captureScreenshot', { format: 'png' })

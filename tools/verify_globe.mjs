@@ -28,7 +28,8 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 
 // 七台演示机（**合成夹具，不含任何真实站点的数据**）：国家分布与常见的自建机队一样
 // （US×3 / JP×3 / DE×1），名字里带城市线索（圣何塞 / 东京 / 法兰克福）正好走城市线索那条路，
-// 另有一台没有城市线索（Ashburn）落到国家落点。初始视角下这七台一半在地球背面 ——
+// 另有一台 Ashburn —— 它是新补进线索表的城市（旧版这台落国家码「US」，现在有城名，
+// 顺带证明线索表扩展真的生效）。初始视角下这七台一半在地球背面 ——
 // 「背面不画」那条边界就是靠它压出来的（26 台那套全在正面，压不出这个）。
 const LIVE = JSON.parse(readFileSync('tools/globe-nodes-fixture.json', 'utf8'))
 // 合成那一套：26 台、八个国家、一台离线 —— 拿它压一压标签堆叠与左右分流
@@ -140,6 +141,12 @@ const shot = async (name) => {
   const r = await send('Page.captureScreenshot', { format: 'png' })
   if (r.result?.data) (await import('node:fs')).writeFileSync(join(OUT, name), Buffer.from(r.result.data, 'base64'))
 }
+/** 只截**地区侧栏**那一块：改前/改后对照图（HK 一行 / 两行）用它，与站长报的那张同一口径。 */
+const shotSide = async (name) => {
+  const raw = await js(`(() => { const r = document.querySelector('.globe-side').getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y + scrollY), width: Math.round(r.width), height: Math.round(r.height), scale: 2 }) })()`)
+  const r = await send('Page.captureScreenshot', { format: 'png', clip: JSON.parse(raw) })
+  if (r.result?.data) (await import('node:fs')).writeFileSync(join(OUT, name), Buffer.from(r.result.data, 'base64'))
+}
 
 // 页面上要断言的都在这一段里取回来。**别在模板字符串里写反引号或正则**（踩过）。
 const READ = `(() => {
@@ -188,7 +195,7 @@ const READ = `(() => {
     svgBox: svg ? (() => { const r = svg.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)] })() : null,
     caption: caption ? caption.textContent : null,
     sideTitle: panel ? panel.querySelector('.globe-side-title').textContent : null,
-    regs: regs.map((b) => ({ text: b.querySelector('span').textContent, count: Number(b.querySelector('b').textContent), on: b.getAttribute('aria-pressed') === 'true' })),
+    regs: regs.map((b) => ({ text: b.querySelector('span').textContent, count: Number(b.querySelector('b').textContent), on: b.getAttribute('aria-pressed') === 'true', title: b.getAttribute('title') || '', dot: b.querySelector('.globe-reg-dot') !== null })),
     flags: regs.length - 1 === (panel ? panel.querySelectorAll('.globe-reg-flag').length : 0),
     flagSrc: panel && panel.querySelector('.globe-reg-flag') ? panel.querySelector('.globe-reg-flag').getAttribute('src') : null,
     atlas: atlas ? { h: Math.round(atlas.getBoundingClientRect().height), w: Math.round(atlas.getBoundingClientRect().width), touch: getComputedStyle(atlas).touchAction, cursor: getComputedStyle(atlas).cursor } : null,
@@ -266,8 +273,8 @@ check('引线抽样与公式一致', s.links === expectLinks(s.hitData), `${s.li
 check('左右两摞数量均衡（差 ≤ 2）', Math.abs(s.labelSide.filter((x) => x === 'L').length - s.labelSide.filter((x) => x === 'R').length) <= 2, JSON.stringify(s.labelSide))
 check('底部文案：ORTHOGRAPHIC + 经纬度 + 档位', /^ORTHOGRAPHIC · \d+°[EW] \d+°[NS] · MEDIUM$/.test(s.caption || ''), s.caption)
 check('地区列表第一行是「全部」并给出总台数', s.regs[0]?.text === '全部' && s.regs[0]?.count === 7, JSON.stringify(s.regs[0]))
-check('地区按台数从多到少（东京 3、圣何塞 2、法兰克福 1、US 1）',
-  JSON.stringify(s.regs.slice(1).map((r) => [r.text, r.count])) === JSON.stringify([['Tokyo', 3], ['San Jose', 2], ['Frankfurt am Main', 1], ['US', 1]]),
+check('地区按台数从多到少（东京 3、圣何塞 2、法兰克福 1、阿什本 1）',
+  JSON.stringify(s.regs.slice(1).map((r) => [r.text, r.count])) === JSON.stringify([['Tokyo', 3], ['San Jose', 2], ['Frankfurt am Main', 1], ['Ashburn', 1]]),
   JSON.stringify(s.regs.slice(1).map((r) => [r.text, r.count])))
 check('每一行地区都配了旗子（全部那行没有）', s.flags === true && s.flagSrc === '/flags/JP.svg', `${s.flagSrc}`)
 check('没选地区时选中的只有「全部」那一行', s.regs[0].on === true && s.regs.slice(1).every((r) => !r.on), JSON.stringify(s.regs.map((r) => r.on)))
@@ -276,7 +283,9 @@ check('★ 针用主题里那个琥珀色（--warn）的空心环、标签垫了
 check('圆盘高度 280（上游同值）', s.atlas?.h === 280, `${s.atlas?.h}`)
 check('桌面是两列（地球 1.35 : 侧栏 0.65）', String(s.cols).split(' ').length === 2, s.cols)
 check('顶栏那枚开关在、默认是按下的（默认开）', s.toggle?.pressed === 'true' && s.toggle?.w === 36 && s.toggle?.h === 36, JSON.stringify(s.toggle))
-check('顶栏图标顺序：登录 → 卡片形态 → 地球 → 切换主题（没有养鸡场那枚）',
+// 顺序钉住是为了让「谁被挪走了」一眼可见。搜索那格不在这张表里 —— 它是个 <input>（收起时是
+// 一枚方形图标），不是按钮；它的位置与开合由 tools/verify_search.mjs 管。
+check('顶栏顺序：登录 → 卡片形态 → 地球 → 切换主题（没有养鸡场那枚）',
   JSON.stringify(s.icons) === JSON.stringify(['登录', '卡片形态', '隐藏节点地球', '切换主题']), JSON.stringify(s.icons))
 check('控制台无异常', errors.length === 0, errors.join(' | '))
 await shot('01-live-desktop.png')
@@ -320,6 +329,10 @@ check('点的是东京那一行', String(clicked).indexOf('Tokyo') >= 0, String(
 check('★ 下面的列表只剩该地区的机器（3 台）', filtered.cards === 3, `${filtered.cards} 张卡片`)
 check('★ 那一行被标成选中（其余都没选中）', filtered.regs.filter((r) => r.on).length === 1 && filtered.regs.find((r) => r.text.indexOf('Tokyo') >= 0)?.on === true, JSON.stringify(filtered.regs.filter((r) => r.on)))
 check('侧栏标题变成「地区 · 已定位」', filtered.sideTitle === '地区 · 已定位', filtered.sideTitle)
+// ★ 桌面（1440）上地区行是**原来的紧凑高度**：2026-10-07 站长看过桌面之后要求「改回原来那样」——
+//   撑到 32 只留给窄屏（≤899px，手指操作）。这里钉住桌面这一支，免得哪天又全局撑高。
+const rowH = await js(`Math.round(document.querySelector('.globe-reg').getBoundingClientRect().height)`)
+check('桌面地区行是紧凑高度（≤24px；撑高只留给窄屏）', rowH <= 24, `${rowH}px`)
 check('地球上多了一枚定位标记', filtered.selected === 1, `${filtered.selected}`)
 check('视角飞过去了（文案里的经度接近东京 139.7°E）', Math.abs(lonOf(filtered.caption) - 140) <= 1, filtered.caption)
 check('钉住之后不再自转', (await (async () => {
@@ -424,7 +437,11 @@ check('★ 刷新之后仍然是关着的', reloaded.panel === false && reloaded
 await js(`document.querySelector('.globe-toggle').click()`)
 await sleep(400)
 const on = JSON.parse(await js(READ))
-check('再点一下就回来了', on.panel === true && on.stored === '1', `${on.panel} / ${on.stored}`)
+// ★ 2026-10-07 起站点设置里有了「节点地球」开关：访客点回**与站长那一档相同**的档位时，
+// 记录会被删掉（= 重新跟着站长走，与卡片形态同一套口径）。这个桩里站长那档是「开」（默认），
+// 所以点回来之后 localStorage 里**没有**这个键、面板照旧显示。
+check('再点一下就回来了（与站长那档相同，记录被清掉＝重新跟着站长走）',
+  on.panel === true && on.stored === null, `${on.panel} / ${on.stored}`)
 
 console.log(`\n=== 七、${FLEET.length} 台的合成机群（两摞标签都排满、有离线机器、有一个超长名字） ===`)
 fleet = FLEET
@@ -450,6 +467,28 @@ check('★ 地区按台数从多到少（结构不变式，不写死某一套数
   JSON.stringify(s.regs.slice(1, 5).map((r) => [r.text, r.count])))
 check('地区台数合计 = 有落点的台数（没落点的不进地区列表，但仍然算在「全部」里）',
   s.regs.slice(1).reduce((sum, r) => sum + r.count, 0) === LOCATED, `${s.regs.slice(1).reduce((sum, r) => sum + r.count, 0)} / ${LOCATED}`)
+// ★ 回归：站长截图里「🇭🇰 HK 3 ｜ 🇭🇰 Hong Kong 3」并排出现 —— 同一个地方两行、两面一样的旗。
+//   根因：移植时漏了上游 `fallbackCity` 的国家级兜底城名 —— 名字里带城市线索的 HK 落
+//   `HK · Hong Kong`，没带的落裸 `HK`。这份夹具正是 2 台不带 + 3 台带 —— 修好后**只能有一行**。
+check('★ 一个 HK 只有一行（带线索与不带线索不再裂成「HK」+「Hong Kong」两行）',
+  s.regs.filter((r) => r.text === 'Hong Kong').length === 1 && s.regs.find((r) => r.text === 'Hong Kong')?.count === 5 && !s.regs.some((r) => r.text === 'HK'),
+  JSON.stringify(s.regs.map((r) => [r.text, r.count])))
+check('★ 兜底的国家不出裸码行（HK/TW/SG/JP/KR 都有城名；US/DE 这类照旧退国家码）',
+  !s.regs.slice(1).some((r) => ['HK', 'TW', 'SG', 'JP', 'KR'].includes(r.text)) && s.regs.some((r) => r.text === 'US'),
+  JSON.stringify(s.regs.map((r) => r.text)))
+// ★ 2026-10-08：地区行上的离线可见性（这块面板以前对「离线」一个字都不说）。有离线的
+//   行挂一枚小点 + 悬停写明台数；全在线的行不许有点。
+{
+  const hkRow = s.regs.find((r) => r.text === 'Hong Kong')
+  check('★ 地区里有离线机器时行上看得到（HK 那行：小点 + 悬停「5 台 · 1 台离线」）',
+    hkRow?.dot === true && (hkRow.title || '').indexOf('5 台') >= 0 && (hkRow.title || '').indexOf('1 台离线') >= 0,
+    JSON.stringify(hkRow))
+  const usRow = s.regs.find((r) => r.text === 'US')
+  check('★ 全在线的地区不带离线点（US 那行）', usRow?.dot === false, JSON.stringify(usRow))
+  check('「全部」那行悬停写明合计口径（27 台里有 2 台认不出国家、不上地区列表）',
+    (s.regs[0].title || '').indexOf('27 台') >= 0 && (s.regs[0].title || '').indexOf('2 台') >= 0 && (s.regs[0].title || '').indexOf('认不出国家') >= 0,
+    s.regs[0].title)
+}
 check('控制台无异常', errors.length === 0, errors.join(' | '))
 await shot('03-synth-desktop.png')
 
@@ -468,6 +507,7 @@ check('深色下 land/ocean 用的是深色那一套（与亮色不同）', dark
 check('深色下针是深色那档的琥珀', dark.pinStroke === dark.warn, `${dark.pinStroke} vs ${dark.warn}`)
 check('深色下控制台无异常', errors.length === 0, errors.join(' | '))
 await shot('04a-synth-dark.png')
+await shotSide('04c-synth-dark-region.png')
 const light = await themed('light')
 check('亮色下照常渲染', light.panel === true && light.landPts > 200, JSON.stringify(light.landPts))
 check('★ 亮色下陆地是另一套染色（不是深色那套）', light.landFill !== dark.landFill, `${dark.landFill} → ${light.landFill}`)
@@ -483,9 +523,13 @@ await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
 await sleep(1600)
 const mobile = JSON.parse(await js(READ))
 check('窄屏照常画地球（不是像上游那样整块不画）', mobile.panel === true && mobile.landPts > 50, `${mobile.landPts} 个点`)
-check('★ 窄屏自动降到 LOW 档（粗岸线 + 无扫掠 + 无连线）',
-  (mobile.caption || '').indexOf('· LOW') > 0 && mobile.sweeps === 0 && mobile.links === 0 && mobile.wires < s.wires,
-  `${mobile.caption} / ${mobile.wires} 条网线 / ${mobile.sweeps} 扫掠 / ${mobile.links} 连线`)
+// ★ 2026-10-07 站长看过手机上的 LOW 档后说「地球太简陋了」→ 窄屏不再降档，跟桌面同档：
+//   detailed 岸线（不是 104 点的粗草图）、30° 经纬网、1 条扫掠、引线。
+//   回退开关是 Globe.tsx 里的 NARROW_LOW_TIER（改回 true 即一行回退）；那条路径由这几条断言守着，
+//   真要回退就得连着这里一起改 —— 免得"悄悄降档"没人发现。
+check('★ 窄屏不再降档：与桌面同档（detailed 岸线 + 30° 网 + 1 扫掠 + 引线）',
+  (mobile.caption || '').indexOf('· MEDIUM') > 0 && mobile.sweeps === 1 && mobile.links > 0 && mobile.landPts > 250,
+  `${mobile.caption} / 岸线点 ${mobile.landPts}（LOW 档约 120）/ ${mobile.wires} 条网线 / ${mobile.sweeps} 扫掠 / ${mobile.links} 连线`)
 check('★ 窄屏把竖向手势让给页面滚动（touch-action: pan-y）', mobile.atlas?.touch === 'pan-y', String(mobile.atlas?.touch))
 check('窄屏面板是上下两段（单列）', String(mobile.cols).split(' ').length === 1, mobile.cols)
 check('窄屏圆盘压到 210（省掉上下各 38px 的空档）', mobile.atlas?.h === 210, `${mobile.atlas?.h}`)

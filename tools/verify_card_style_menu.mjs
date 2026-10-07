@@ -212,6 +212,7 @@ let s = await open()
 check('顶栏有那枚菜单按钮（纯图标、36×36，与相邻两枚同规格）', s.toggle?.title === '卡片形态' && s.toggle?.box.w === 36 && s.toggle?.box.h === 36, JSON.stringify(s.toggle?.box))
 check('菜单默认是收起的（aria-expanded=false，DOM 里没有菜单）', s.toggle?.expanded === 'false' && s.menu === false)
 check('★ 访客没选过 → 列表就是站长设置的那一档（简约）', s.style === 'plain' && shapeOk(s, 'plain'), `${s.style} net-row=${s.netRow}`)
+// 搜索那格不在这张表里：它是个 <input>（收起时是一枚方形图标），不是按钮，见 tools/verify_search.mjs。
 check('顶栏顺序：登录 → 卡片形态 → 地球 → 切换主题', JSON.stringify(s.icons) === JSON.stringify(['登录', '卡片形态', '隐藏节点地球', '切换主题']), JSON.stringify(s.icons))
 check('访客还没选择，localStorage 里没有记录', s.stored === null, String(s.stored))
 

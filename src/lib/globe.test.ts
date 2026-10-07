@@ -5,7 +5,7 @@
 // 经度符号、`y` 的上下），地球会整个镜像或者翻转，而看截图不一定看得出来。
 // 所以测试里把上游那两行公式**原样**再写一遍，逐点比对。
 import {
-  camera, cityHint, clampLat, curvePath, globeCaption, globeNodes, globeProfile, graticule, inkWidth, landPaths,
+  camera, cityHint, clampLat, curvePath, globeCaption, globeNodes, globeProfile, graticule, inkWidth, landPaths, mergeRegion,
   layoutLabels, links, prepareRings, regionOf, regionRows, regionView, sweepLonAt, sweepOpacity, trimLabel, VIEW, wrapLon,
 } from "./globe.ts"
 import { COARSE_WORLD_OUTLINES, COUNTRY_LL, WORLD_OUTLINES } from "./world.ts"
@@ -120,7 +120,7 @@ ok(compared > 7000, `真的比对了 5 个视角 × 全部岸线点（实际 ${c
 /* ---------------------------------------------------------------- 岸线路径 */
 
 const cam = camera(80, 30)
-const prep = prepareRings(WORLD_OUTLINES, globeProfile("medium").coastStride)
+const prep = prepareRings(WORLD_OUTLINES)
 const land = landPaths(cam, prep)
 ok(land.fill.length > 2000, "岸线填充路径非空")
 ok(land.stroke.length > 2000, "岸线描边路径非空")
@@ -135,13 +135,14 @@ ok(coords.length > 400, `描边路径里有坐标（${coords.length} 个）`)
 const outside = coords.filter(([x, y]) => Math.hypot(x - VIEW.cx, y - VIEW.cy) > VIEW.r + 0.05)
 eq(outside.length, 0, "岸线不越出圆盘（背面的大陆没翻到正面）")
 
-// 抽稀：medium 的岸线点数应当明显少于原始点数，但仍是个地球的样子。
-const dense = prepareRings(WORLD_OUTLINES, 1)
-ok(prep.vec.length < dense.vec.length * 0.6, "medium 的抽稀真的生效了")
-ok(prep.vec.length > 1200, "抽稀之后还剩足够多的点（不是抽成空壳）")
-eq(prepareRings(WORLD_OUTLINES, 3).vec.length, prep.vec.length, "同参数重复调用结果一致")
-// 短环不抽稀：粗岸线里那个只有十几点的日本环不能抽没。
-eq(prepareRings(COARSE_WORLD_OUTLINES, 4).offsets.length, COARSE_WORLD_OUTLINES.length + 1, "粗岸线的每个环都还在")
+// 岸线**不做抽稀**：这套数据本身已经稀疏（79 环 1483 点），做减法会抹掉半岛与海湾
+// （实测过：medium 档 5.5% 的陆地该画没画、5.0% 的海被填成陆地 —— 用户报的「陆地残缺」）。
+// 逐点比对「该是陆地 / 画出来是不是陆地」的判据在 tools/verify_globe_land.mjs 里。
+const rawPoints = WORLD_OUTLINES.reduce((n, r) => n + (r?.length ?? 0), 0)
+eq(prep.vec.length, rawPoints * 3, "每个环都原样进来（不抽稀）")
+eq(prep.offsets.length, WORLD_OUTLINES.length + 1, "环数一个不少")
+// 短环（十几点的小岛）当然也在。
+eq(prepareRings(COARSE_WORLD_OUTLINES).offsets.length, COARSE_WORLD_OUTLINES.length + 1, "粗岸线的每个环都还在")
 
 /* ---------------------------------------------------------------- 经纬网 */
 
@@ -170,7 +171,8 @@ eq(cityHint(node(3, "华纳云 JP", "JP")), null, "认不出城市就返回 null
 eq(cityHint(node(4, "魏武王", "CN", { group: "香港" }))?.name, "Hong Kong", "分组名也参与匹配（站点常用的地方）")
 
 eq(regionOf(node(1, "阿里 广州", "CN")), { key: "CN · Guangzhou", code: "CN", city: "Guangzhou", label: "Guangzhou", base: [113.2644, 23.1291] }, "国家码 + 城名 = 地区键（城名线索优先于国家落点）")
-eq(regionOf(node(2, "Nobrand Traffic Bug", "jp"))?.key, "JP", "认得国家但认不出城市 → 地区就是国家码（且国家码大小写归一）")
+eq(regionOf(node(2, "Nobrand Traffic Bug", "jp"))?.key, "JP · Japan", "认不出城市 → 国家级兜底城名（日本 → Japan），国家码大小写归一")
+eq(regionOf(node(2, "Nobrand Traffic Bug", "de"))?.key, "DE", "没有兜底城名的国家，认不出城市就是国家码（也验大小写归一）")
 eq(regionOf(node(3, "无名", "")), null, "没有国家码的节点不上地球")
 eq(regionOf(node(4, "某地", "XA")), null, "国家码不在表里、又认不出城市 → 不上地球")
 ok(regionOf(node(5, "纳泰-DE9929", "DE")) !== null, "表里有 DE")
@@ -179,6 +181,26 @@ ok(regionOf(node(5, "纳泰-DE9929", "DE")) !== null, "表里有 DE")
 eq(regionOf(node(6, "野草云", "HK"))?.code, "HK", "HK 保持 HK（上游会写成 CN）")
 eq(regionOf(node(6, "白猫", "TW"))?.code, "TW", "TW 保持 TW（上游会写成 CN）")
 eq(COUNTRY_LL.HK[0], 114.2, "国家落点表原样（HK）")
+
+// ★ 上游 `fallbackCity` 的国家级兜底城名（移植时漏过的那层，站长截图里 HK 裂成两行的根因）：
+//   名字里认不出城市时，这几个国家照样有城名；其余国家退到国家码。
+eq(regionOf(node(20, "野草云", "HK"))?.key, "HK · Hong Kong", "HK 认不出城市也落 Hong Kong（上游无条件兜底）")
+eq(regionOf(node(21, "华纳云 HK", "HK"))?.key, "HK · Hong Kong", "HK 名字里写着 HK → 同一个地区键（不再分成两行）")
+eq(regionOf(node(22, "幽灵机", "SG"))?.key, "SG · Singapore", "SG 认不出城市也落 Singapore")
+eq(regionOf(node(23, "幽灵机二", "TW"))?.key, "TW · Taiwan", "TW 认不出城市落 Taiwan（名字里认得出 Taipei/Taichung 时仍按城名）")
+eq(regionOf(node(24, "幽灵机三", "JP"))?.key, "JP · Japan", "JP 认不出城市落 Japan")
+eq(regionOf(node(25, "幽灵机四", "KR"))?.key, "KR · Korea", "KR 认不出城市落 Korea")
+eq(regionOf(node(26, "阿里 西雅图", "US"))?.key, "US · Seattle", "兜底不影响城市线索（US 照旧认西雅图）")
+eq(regionOf(node(27, "幽灵机五", "US"))?.key, "US", "没有兜底的国家照旧退国家码（US）")
+
+// ★ 2026-10 数据扩展：国家表 12 → 80+、城市线索 24 → ~100（第三方的大机群以前大半
+//   认不出城市、全堆在国家码下；表外国家的机器干脆整个地区功能里看不见）。
+eq(cityHint(node(28, "示例 Ashburn", "US"))?.name, "Ashburn", "新补的美国城市线索（阿什本）认得出")
+eq(regionOf(node(28, "示例 Ashburn", "US"))?.key, "US · Ashburn", "新线索进地区键（不再落裸的 US）")
+eq(regionOf(node(29, "某台机器", "RU"))?.key, "RU", "表外国家扩进来了（RU 现在上地球、进地区列表）")
+eq(regionOf(node(30, "某台机器二", "ZA"))?.key, "ZA", "同上（ZA）")
+ok(Object.keys(COUNTRY_LL).length >= 80, `国家表已覆盖常见 IDC 国家（${Object.keys(COUNTRY_LL).length} 国）`)
+ok(regionOf(node(31, "莫斯科一号", "RU"))?.key === "RU · Moscow", "莫斯科这类新城市线索也按城市落")
 
 const fleet = [
   node(1, "腾讯 SH", "CN"),
@@ -194,29 +216,49 @@ const fleet = [
 ]
 
 const placed = globeNodes(fleet)
-eq(placed.length, 9, "认不出国家的机器没上地球（10 台里 9 台有落点）")
+// ★合并门槛：**整队 ≥30 台，或同一个地区 ≥5 台**（「或」）。这份夹具是 10 台、JP 4 台 ——
+//   两条都不满足，所以**不合并**：一台一枚针，同地区的按角度岔开。
+eq(mergeRegion(10, 4), false, "10 台、同地区 4 台 → 不合并")
+eq(mergeRegion(10, 5), true, "同地区到 5 台 → 合并")
+eq(mergeRegion(30, 2), true, "整队到 30 台 → 合并（哪怕这个地区只有 2 台）")
+eq(placed.length, 9, "不合并：9 台有落点的机器各一枚针")
 eq(placed.map((p) => p.key), ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "顺序与节点列表一致（连线抽样要靠 index）")
-// 同地区的多台必须岔开：坐标两两不同，且都在落点附近（不是随便乱扔）。
-const byKey = new Map<string, [number, number][]>()
-for (const p of placed) byKey.set(p.region.key, [...(byKey.get(p.region.key) ?? []), p.ll])
-for (const [key, lls] of byKey) {
-  const uniq = new Set(lls.map((ll) => ll.join(",")))
-  eq(uniq.size, lls.length, `${key} 的 ${lls.length} 台机器落点各不相同（不叠在一起）`)
-  const base = [...byKey.keys()].includes(key) ? regionOf(fleet.find((n) => regionOf(n)?.key === key) as Node)?.base : null
-  if (base) ok(lls.every((ll) => Math.abs(ll[0] - base[0]) < 6 && Math.abs(ll[1] - base[1]) < 6), `${key} 的散点都在落点附近`)
-}
+eq(placed.every((p) => p.count === 1), true, "不合并时针上没有台数")
+// JP 那 4 台必须岔开：坐标两两不同，且都在落点附近（不是随便乱扔）。
+const jp = placed.filter((p) => p.region.key === "JP · Japan")
+eq(new Set(jp.map((p) => p.ll.join(","))).size, 4, "同地区 4 台岔开（一枚不盖住另一枚）")
+ok(jp.every((p) => Math.abs(p.ll[0] - p.region.base[0]) < 6 && Math.abs(p.ll[1] - p.region.base[1]) < 6), "岔开的点都在落点附近")
 eq(globeNodes(fleet).map((p) => p.ll), placed.map((p) => p.ll), "同一份节点算两次，落点完全一样（不会每帧抖）")
 
-const rows = regionRows(fleet)
-// ★ 注意这里有两行香港：`华纳云 HK` 的名字里写着 HK，于是落到「城市级」的
-// `HK · Hong Kong`；`野草云` 名字里没有城市线索，只能落到「国家级」的 `HK`。
-// 上游就是这个口径（城市级与国家级是两个地区），不是分桶出错。
-eq(rows.map((r) => [r.region.key, r.count]), [["JP", 4], ["CN", 1], ["CN · Guangzhou", 1], ["HK", 1], ["HK · Hong Kong", 1], ["KR · Seoul", 1]], "地区分桶与台数（按台数从多到少）")
-eq(rows.reduce((sum, r) => sum + r.count, 0), 9, "各地区台数合计 = 有落点的机器数")
+// 同地区到 5 台 → 聚成一枚针：台数 5、标签「Japan ×5」、落在地区中心。
+const five = globeNodes([...fleet, node(11, "第五台 JP", "JP")])
+const jpMerged = five.filter((p) => p.region.key === "JP · Japan")
+eq(jpMerged.length, 1, "同地区到 5 台 → 只出一枚针")
+eq(jpMerged.map((p) => p.count), [5], "那枚针上写着 5 台")
+eq(jpMerged.map((p) => p.name), ["Japan ×5"], "多台的针标签是「地区 × 台数」")
+eq(jpMerged[0].ll, regionRows(fleet).find((r) => r.region.key === "JP · Japan")?.aim, "合并的针落在地区中心")
+eq(five.filter((p) => p.region.key === "CN").map((p) => p.count), [1], "没到门槛的地区照旧一台一枚")
+// 有一台离线，那枚针就按离线画（不能被「多数在线」盖过去）。
+const jpOffline = globeNodes([...fleet, node(11, "第五台 JP", "JP")].map((n) => (n.id === 7 ? { ...n, online: false } : n)))
+eq(jpOffline.find((p) => p.region.key === "JP · Japan")?.online, false, "合并的那枚针：地区里有一台离线就按离线画")
+eq(jpOffline.find((p) => p.region.key === "CN")?.online, true, "别的地区不受影响")
 
-const rv = regionView(fleet, "JP")
+const rows = regionRows(fleet)
+// ★ 一个 HK 只有一行：名字里写着 HK 的（`华纳云 HK`）与没写的（`野草云`）都落 `HK · Hong Kong`
+//   —— 上游 `fallbackCity` 的兜底城名。漏掉它就会并排出现「HK」与「HK · Hong Kong」两行
+//   （同一面旗、同一个地方两行，站长截图里就是它）。四个 JP 名字里都没有城市线索，
+//   也一起落 `JP · Japan`（旧版这里会显示裸的「JP」）。
+eq(rows.map((r) => [r.region.key, r.count]), [["JP · Japan", 4], ["HK · Hong Kong", 2], ["CN", 1], ["CN · Guangzhou", 1], ["KR · Seoul", 1]], "地区分桶与台数（按台数从多到少）")
+eq(rows.reduce((sum, r) => sum + r.count, 0), 9, "各地区台数合计 = 有落点的机器数")
+// ★ 地区行也把离线台数带出来：列表里才看得见哪个地区有机器离线（行上那枚小点用它）。
+eq(rows.find((r) => r.region.key === "JP · Japan")?.offline, 0, "全在线的地区离线台数为 0")
+const offlineRows = regionRows(fleet.map((n) => (n.id === 7 ? { ...n, online: false } : n)))
+eq(offlineRows.find((r) => r.region.key === "JP · Japan")?.offline, 1, "有离线的地区统计得出来（JP 那行 1 台）")
+eq(offlineRows.find((r) => r.region.key === "HK · Hong Kong")?.offline, 0, "别的地区不受影响")
+
+const rv = regionView(fleet, "JP · Japan")
 eq(rv.shown.map((n) => n.id), [5, 6, 7, 8], "按地区筛选只留下该地区的机器")
-eq(rv.current, "JP", "选中的地区是有效的")
+eq(rv.current, "JP · Japan", "选中的地区是有效的")
 eq(regionView(fleet, "不存在的地区").current, null, "悬空的选中态回落「全部」")
 eq(regionView(fleet, "不存在的地区").shown.length, 10, "回落时列表仍然是全部（含没落点的机器）")
 eq(regionView(fleet, null).shown.length, 10, "没选地区 = 全部")
@@ -226,7 +268,7 @@ eq(regionView([], "JP").current, null, "没有节点时不存在悬空选中")
 
 const sides = new Map<string, "L" | "R">()
 const laid = layoutLabels(cam, placed, sides)
-eq(laid.length, 9, "9 台都排上了标签")
+eq(laid.length, 9, "9 枚针都排上了标签")
 ok(laid.every((p) => Math.abs(p.lx - VIEW.cx) > VIEW.r), "两摞标签都在圆盘之外（不压在地球上）")
 ok(laid.every((p) => p.ly >= 12 && p.ly <= 204), "标签不出画布上下边")
 ok(laid.every((p) => p.end === (p.lx < VIEW.cx)), "左侧标签右对齐、右侧标签左对齐")
@@ -236,7 +278,7 @@ for (const side of ["L", "R"] as const) {
 }
 const counts = [laid.filter((p) => p.end).length, laid.filter((p) => !p.end).length]
 ok(Math.abs(counts[0] - counts[1]) <= 2, `左右两摞数量均衡（${counts[0]} / ${counts[1]}）`)
-eq(sides.size, 9, "每台机器的左右侧都被记下来了（下一帧不会左右跳）")
+eq(sides.size, 9, "每枚针的左右侧都被记下来了（下一帧不会左右跳）")
 // 左侧写「名字 · 国家」，右侧写「国家 · 名字」—— 上游如此，两侧都从外侧往内读。
 const left = laid.find((p) => p.end)
 const right = laid.find((p) => !p.end)
@@ -290,7 +332,14 @@ eq(WORLD_OUTLINES.length, 79, "岸线 79 个环")
 eq(WORLD_OUTLINES.reduce((sum, r) => sum + r.length, 0), 1483, "岸线共 1483 个点")
 ok(WORLD_OUTLINES.every((r) => r.every(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90)), "岸线坐标都在合法区间")
 eq(COARSE_WORLD_OUTLINES.length, 8, "粗岸线 8 个环")
-eq(Object.keys(COUNTRY_LL).length, 12, "国家落点表 12 个国家")
+// ★ 2026-10：国家表从原站那 12 国有意扩到常见 IDC 国家全集（表外国家在地区功能里
+//   完全看不见）。原表那 12 条要**逐字不变**，扩的是新增条目。
+eq(Object.keys(COUNTRY_LL).length, 87, "国家落点表覆盖到常见 IDC 国家（原站 12 国 + 75 国扩展）")
+eq(["HK", "JP", "DE", "NL", "US", "TW", "AU", "SG", "KR", "GB", "FR", "CN"].map((cc) => [cc, COUNTRY_LL[cc]]), [
+  ["HK", [114.2, 22.3]], ["JP", [139.7, 35.7]], ["DE", [8.7, 50.1]], ["NL", [4.9, 52.4]],
+  ["US", [-98.6, 39.8]], ["TW", [121.0, 23.7]], ["AU", [134.5, -25.7]], ["SG", [103.82, 1.35]],
+  ["KR", [127.8, 36.3]], ["GB", [-2.5, 54.5]], ["FR", [2.2, 46.2]], ["CN", [104.2, 35.8]],
+], "原站那 12 国的坐标一字未动（扩表只加不改）")
 
 if (failed) {
   console.error(`\n✗ globe: ${failed} 条断言没过`)

@@ -25,14 +25,19 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const MANIFEST = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const PREFIX = process.argv[3] || 'shots/settings-dialog';
 const BASE = (process.argv[4] || 'http://127.0.0.1:28081').replace(/\/$/, '');
-// 本站要靠这几项换图标、指养鸡场入口、切卡片形态、开关列表页顶部那两行、按名字挑延迟线路、
-// 决定备注摊在哪儿——名字与 theme.json 的 label 逐字对应。
-// ★备注：「服务器备注」那份清单 1.15.x 起、1.16.0 删过、1.17.0 请回来、1.18.0 删掉——备注内容只读
-// hub 后台按节点填的「公开备注」与「私有备注」（见 src/lib/notes.ts）；1.19.1 起主题这边给「备注」
-// 那一节配了一个**真实设置项「备注显示位置」**（卡片与详情页 / 只在卡片 / 只在整页详情 / 都不显示），
-// 用法说明就挂在它的灰色说明里（hub 只画「后面跟着字段」的标题，没有字段的标题会被静默丢掉）。
-// **字段数 6**（≤6 就不会让面板切两列 + 分组导航；到 7 个才会，下面有排版断言）。
-const WANTED = ['站点图标', '养鸡场入口', '卡片形态', '列表页顶部', '备注显示位置', '显示的延迟线路'];
+// 本站要靠这几项指养鸡场入口、切卡片形态、开关列表页顶部那两行、按名字挑延迟线路
+// ——名字与 theme.json 的 label 逐字对应。
+// ★站点图标（`siteIcon`）1.25.0 起**不在主题设置里了**：hub 1.4.0 的面板「设置 → 站点图标」管它，
+// 主题只留两份同名的兜底文件。下面有一条专门断言它确实没再出现（拿旧 manifest 跑必须 FAIL）。
+// ★备注：「服务器备注」那份清单 1.15.x 起、1.16.0 删过、1.17.0 请回来、1.18.0 删掉、1.19.0 试过又删掉
+// ——备注内容只读 hub 后台按节点填的「公开备注」与「私有备注」（见 src/lib/notes.ts）；主题这边
+// 1.19.0 给「备注」那一节配了一个**真实设置项「备注显示位置」**（卡片与详情页 / 只在卡片 / 只在详情页），
+// 那段详细的用法说明就挂在它上面（hub 只画「后面跟着字段」的标题，没有字段的标题会被静默丢掉）。
+// **字段数 6**：2026-10-07 站长先要了「节点地球」与「主题模式」两项（7 个 → 面板换成左导航 +
+// 两列），随后把「养鸡场入口」删掉（顶栏入口改成自动探测本站 `/chicken/`）→ 回到 6 个，
+// 面板也回到一页平铺的**单列**版式（`large = fields.length > 6` 为假，没有导航）。
+// 下面那批排版断言因此走**没有导航**的那一支：一次挂载全部字段。
+const WANTED = ['卡片形态', '列表页顶部', '备注显示位置', '显示的延迟线路', '节点地球', '主题模式'];
 const PORT = 9780 + Math.floor(Math.random() * 20);
 const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe']
   .find((p) => existsSync(p)) || 'chrome';
@@ -53,7 +58,7 @@ const ws = new WebSocket(await connect());
 await new Promise((r) => { ws.onopen = r; });
 const send = (m, p = {}) => new Promise((res) => { const i = ++id; pend.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
 // 站点配置喂 `{}` = 从没保存过：面板的初值是 `saved[key] ?? default`，
-// 所以截图里应当看到主题自带的默认值（/site-icon.png、开关是开的）。
+// 所以截图里应当看到主题自带的默认值（下拉选中的那一档、地址留空）。
 // 「保存过非默认值」那一态不用这里验——线上真机的 PUT/匿名读回才是判据。
 const saved = {};
 ws.onmessage = (e) => {
@@ -173,14 +178,22 @@ for (const label of WANTED) {
   check(`theme.json 声明了「${label}」`, entries.some((e) => e.label === label));
 }
 
+// ★站点图标 1.25.0 起归 hub 的面板管，主题设置里**不许再有**这一项（有的话就是没删干净：
+// 站长会在两处看到「站点图标」，而主题那个键已经没人读了）。两个方向都断：manifest 里没声明、
+// 对话框里也没画出来。拿改动前的 theme.json 跑这一条必须 FAIL。
+check('「站点图标」不再由主题设置管（manifest 里没有这一项）',
+  !entries.some((e) => e.key === 'siteIcon') && !entries.some((e) => e.label === '站点图标'),
+  entries.map((e) => e.key ?? e.label).join('、'));
+check('对话框里也没有「站点图标」这一格', !everyText.includes('站点图标') && !everyText.includes('siteIcon'));
+
 // 设置项的**说明文案**与**开关初值**也要断：它们是站长唯一看得见的地方，
 // 改了 theme.json 的 help / default 却在面板上没生效（或残留旧句子）就等于没改。
-// 「养鸡场地址」的说明曾经带一个跨站示例（会指向一个具体站点），那是要脱敏掉的。
-// 断的时候只看**形状**（示例句子 + 指向 farm 路径的具体网址），不把站点名写进本仓库。
-const helpText = (entries.find((e) => e.key === 'farmUrl') || {}).help || '';
-check('「养鸡场入口」的说明不再带跨站示例', helpText !== '' && !/例如|跨站的会在新标签页打开/.test(helpText), `help=${helpText}`);
-check('对话框里也没有残留的旧示例句子',
-  !everyText.includes('例如想直接进公开的') && !/https?:\/\/[^\s"）)]*\/chicken/.test(everyText));
+// 「养鸡场入口」1.25.0 起**连设置项一起删了**（顶栏那枚入口图标改成自动探测本站 `/chicken/`，
+// 站长不必配）——与 siteIcon 同一条口径，两个方向都断：manifest 不许声明、对话框不许画出来。
+check('「养鸡场入口」不再由主题设置管（manifest 里没有这一项）',
+  !entries.some((e) => e.key === 'farmUrl') && !entries.some((e) => e.label === '养鸡场入口'),
+  entries.map((e) => e.key ?? e.label).join('、'));
+check('对话框里也没有「养鸡场入口」这一格', !everyText.includes('养鸡场入口') && !everyText.includes('farmUrl'));
 
 // 「服务器备注」那一格（serverNotes）：1.15.x 起、1.16.0 删过、1.17.0 请回来、1.18.0 删掉——备注只读
 // hub 后台按节点填的两个字段。两个方向都断（manifest 声明了没、面板画出来了没），并且**反过来断
@@ -193,8 +206,13 @@ check('「主题设置」对话框里也没有那一格', !everyText.includes('�
 // 于是并进了「备注显示位置」的 `help`（灰色小字，就画在下拉框下面）。判据因此从「标题文案」
 // 挪到「那个字段的 help」；标题只留一个精简的小节名，且**必须紧跟一个字段**（hub 会把
 // 「紧跟另一个标题的标题」与「列表里最后一个标题」静默丢掉——实测挪到「卡片形态」下面整行消失）。
-const GUIDE_TITLE = (entries.find((e) => e.type === 'title' && /备注/.test(String(e.label))) || {}).label || '';
-check('theme.json 里声明了「备注」那一节的标题', GUIDE_TITLE !== '',
+// ★ 1.25.0 起那个小节并进了「节点信息」（与「显示的延迟线路」同一组）：判据从「标题叫『备注』」
+//   改成「`remarkPlacement` 前面最近的那个 title」——组名以后再改也不影响这条断言。
+const guideAt = entries.findIndex((e) => e.key === 'remarkPlacement')
+let guideTitleAt = -1
+for (let i = guideAt - 1; i >= 0; i -= 1) if (entries[i].type === 'title') { guideTitleAt = i; break }
+const GUIDE_TITLE = entries[guideTitleAt]?.label || ''
+check('「备注显示位置」前面有一个小节标题', GUIDE_TITLE !== '',
   JSON.stringify(entries.filter((e) => e.type === 'title').map((e) => e.label)));
 check('小节标题精简（说明搬进字段的灰色说明里了，标题不再是整段话）', GUIDE_TITLE.length <= 6, GUIDE_TITLE);
 const GUIDE = (entries.find((e) => e.key === 'remarkPlacement') || {}).help || '';
@@ -207,10 +225,11 @@ check('说明里讲了怎么填（后台节点 / 逗号分隔＝多枚 / 留空�
 check('那一节标题紧跟一个字段（hub 会丢掉没有字段跟进的标题）',
   entries.some((e, i) => e.type === 'title' && String(e.label) === GUIDE_TITLE && entries[i + 1] && entries[i + 1].type !== 'title'),
   JSON.stringify(entries.map((e) => e.type)));
-const guideAt = entries.findIndex((e) => e.type === 'title' && String(e.label) === GUIDE_TITLE);
-check('说明后面跟的正是「备注显示位置」', entries[guideAt + 1]?.key === 'remarkPlacement',
-  JSON.stringify(entries[guideAt + 1]));
-// 四档口径：默认两边都摊，另有只在卡片 / 只在整页详情 / 都不显示。
+// 而且跟的那个字段就是「备注显示位置」——说明才有地方挂；顺带断「卡片形态」回到了「列表与卡片」下
+// （用户 2026-10-03 的原话是「把备注和卡片形态调个位置」，但直接调会被 hub 丢掉，所以是给它配字段）。
+check('说明后面跟的正是「备注显示位置」', entries[guideTitleAt + 1]?.key === 'remarkPlacement',
+  JSON.stringify(entries[guideTitleAt + 1]));
+// 四档口径（用户 2026-10-03 要求补第四档）：默认两边都摊，另有只在卡片 / 只在整页详情 / 都不显示。
 const PLACE_OPTS = ((entries.find((e) => e.key === 'remarkPlacement') || {}).options || []).map((o) => o.value);
 check('「备注显示位置」是四档：both / card / detail / none',
   JSON.stringify(PLACE_OPTS) === JSON.stringify(['both', 'card', 'detail', 'none']), JSON.stringify(PLACE_OPTS));
@@ -223,7 +242,143 @@ check('「卡片形态」在「列表与卡片」那一组里（不再挂在备�
   JSON.stringify(entries.map((e) => e.key || e.label)));
 check('「主题设置」对话框里画出了这段说明（在下拉框下面那行灰字里）',
   GUIDE !== '' && everyText.includes(GUIDE.slice(0, 12)), `找「${GUIDE.slice(0, 12)}…」`);
+// 这段说明的**观感**：它现在是普通字段的灰色说明（并进 help 之后），所以门槛是**不超过两行**
+// （与上面「每项说明至多两行」同一条规矩）；断的是**渲染出来的行数**，不看字符数——字体宽度
+// 不是我们能算准的。
+const GUIDE_MEASURE = (label) => `JSON.stringify((() => {
+  const dlg = document.querySelector('[role="dialog"]')
+  if (!dlg) return { missing: 'dialog' }
+  const head = ${JSON.stringify(label.slice(0, 8))}
+  const el = [...dlg.querySelectorAll('*')].filter((e) => e.children.length === 0 && e.textContent.trim().startsWith(head)).pop()
+  if (!el) return { missing: 'text', head }
+  const cs = getComputedStyle(el)
+  const r = el.getBoundingClientRect()
+  const lh = parseFloat(cs.lineHeight) || 0
+  return { text: el.textContent.trim().slice(0, 12), w: Math.round(r.width), h: Math.round(r.height), lh: Math.round(lh), lines: lh ? Math.round(r.height / lh) : null, weight: cs.fontWeight, size: cs.fontSize }
+})())`
+// ★ 先点开「备注」那一组：两列版式下**一次只挂载当前那一组**，不点开就量不到那个元素
+//   （第一版因此报了个 {missing:text}，看着像说明没画出来）。
+await openGroup(GUIDE_TITLE)
+const guideBox = JSON.parse((await js(GUIDE_MEASURE(GUIDE))) || '{}')
+// 用户 2026-10-03 要「更详细」之后，这段说明本来就该是多行——但也不能是四五行的墙。
+// 门槛定在 2~3 行：只占一行说明内容被砍过（或根本没画出来），超过三行则是排版退化（两列半宽那份的病根）。
+check('这段说明渲染成 2~3 行（讲清了怎么用、又不糊成一团）',
+  typeof guideBox.lines === 'number' && guideBox.lines >= 2 && guideBox.lines <= 3, JSON.stringify(guideBox));
 
+// 1.16.0 临时放在那一格位置上的**指引标题**（「备注已移到探针后台…」）已撤掉：设置项回来了，
+// 再挂一行「去后台设」会跟它自相矛盾。它占的是 `type: title` 那一行，而 Hub 会**静默丢掉**
+// 没有字段跟进的标题——所以这里连小节名一起断，确保标题没有连带丢一个。
+// ★ 1.25.0 起「备注」与「三网延迟」两个小节并成了一个「节点信息」（设置项回到 6 个、单列版式，
+//   分组也顺手收拢）：断「合并后的那个标题还在、且紧跟一个字段」，以及两个旧小节名不再出现。
+const GONE = '备注已移到探针后台';
+check('过时的指引标题已从 theme.json 撤掉', !entries.some((e) => String(e.label).includes(GONE)),
+  JSON.stringify(entries.filter((e) => e.type === 'title').map((e) => e.label)));
+check('对话框里也没有那行过时指引', !everyText.includes(GONE));
+check('合并后的小节标题还在（撤指引没有连带丢标题）',
+  entries.some((e) => e.type === 'title' && e.label === GUIDE_TITLE) && everyText.includes(GUIDE_TITLE),
+  JSON.stringify(entries.filter((e) => e.type === 'title').map((e) => e.label)));
+check('两个旧小节名（备注 / 三网延迟）已收进「节点信息」',
+  !entries.some((e) => e.type === 'title' && (e.label === '备注' || e.label === '三网延迟')),
+  JSON.stringify(entries.filter((e) => e.type === 'title').map((e) => e.label)));
+
+// ── 下拉框（type: select）的选项文案 ──────────────────────────────────
+// 面板对 select 画的是「真 <select> 一份 + Radix combobox 一份」，两侧的选项文案都来自 manifest.config。
+// 之前这里只断过「字段名画出来了」——选项文案是盲区：改了 theme.json 里某个 option 的 label，
+// 面板上没变（或改错一处）照样全绿。所以按「打开那个下拉、读 [role=option]」的路径断，
+// 且逐字**同序**对照 theme.json 的 options：顺序换了也是站长看得见的改动，不该漏。
+async function openSelect(field) {
+  const owner = groups.find((g) => g.fields.includes(field))
+  await openGroup(owner?.label ?? '')
+  return await js(`(() => {
+    const dlg = document.querySelector('[role="dialog"]')
+    const lab = [...dlg.querySelectorAll('*')].find((el) => el.children.length === 0 && el.textContent.trim() === ${JSON.stringify(field.label)})
+    if (!lab) return 'no-label'
+    let box = lab
+    for (let i = 0; i < 4 && box && box !== dlg; i++) {
+      const c = box.querySelector('[data-slot="select-trigger"], button[role="combobox"]')
+      if (c) { c.click(); return 'clicked' }
+      box = box.parentElement
+    }
+    return 'no-control'
+  })()`)
+}
+const esc = async () => {
+  for (const type of ['keyDown', 'keyUp'])
+    await send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await sleep(300)
+}
+for (const field of entries.filter((e) => e.type === 'select' && Array.isArray(e.options))) {
+  const where = groups.find((g) => g.fields.includes(field))?.label ?? ''
+  const how = await openSelect(field)
+  await sleep(600)
+  const seen = (await js(`[...document.querySelectorAll('[role="option"]')].map((o) => o.innerText.trim())`)) || []
+  const want = field.options.map((o) => o.label)
+  check(`${where ? `「${where}」组里` : ''}「${field.label}」的选项文案与 theme.json 逐字同序一致`,
+    how === 'clicked' && seen.length === want.length && seen.every((t, i) => t === want[i]),
+    `${how}｜面板 ${JSON.stringify(seen)} ｜manifest ${JSON.stringify(want)}`)
+  // 「备注显示位置」留一张下拉展开的档（选项是站长看得见的东西，改档位时能一眼对照）。
+  if (field.key === 'remarkPlacement' && how === 'clicked') {
+    const png = await send('Page.captureScreenshot', { format: 'png' })
+    if (png?.result?.data) writeFileSync(`${PREFIX}-placement-options.png`, Buffer.from(png.result.data, 'base64'))
+  }
+  await esc()
+}
+
+// 开关初值 = `saved[key] ?? default`（站点配置喂的是 `{}`，所以看到的就是主题自带的默认值）。
+// 面板对 boolean 用的是 Radix Switch：`button[role=switch][aria-checked]`，所以按开关读状态，
+// 别去猜它内部的 DOM 结构。找不到开关要报 FAIL，不能静默通过。
+async function switchState(label) {
+  return await js(`(() => {
+    const dlg = document.querySelector('[role="dialog"]')
+    if (!dlg) return 'no-dialog'
+    const node = [...dlg.querySelectorAll('*')].find((el) => el.children.length === 0 && el.textContent.trim() === ${JSON.stringify(label)})
+    if (!node) return 'no-label'
+    let box = node
+    for (let i = 0; i < 5 && box && box !== dlg; i++) {
+      const sw = box.querySelector('[role="switch"], input[type=checkbox]')
+      if (sw) return sw.getAttribute('aria-checked') ?? String(sw.checked)
+      box = box.parentElement
+    }
+    return 'no-switch'
+  })()`)
+}
+for (const entry of entries.filter((e) => e.type === 'boolean')) {
+  // 有导航时开关在其它组里，得先点开那一组（面板只挂载当前组）。
+  const owner = groups.find((g) => g.fields.includes(entry));
+  await openGroup(owner?.label ?? '');
+  const state = await switchState(entry.label);
+  check(`开关「${entry.label}」的初值 = theme.json 的 default（${entry.default}）`, state === String(entry.default), `面板读到 ${state}`);
+}
+
+// ── 排版护栏：字段数 ≤ 6 时必须是单列平铺 ──────────────────────────────
+// 这一条正是 1.5.0 的来由：7 个设置项会让 Hub 切成两列 + 分组导航，而两列里每格只有半宽，
+// 长说明折成四五行、并排两项高矮不齐、每组最后一行空半格。以后真想回到两列，先来这里改断言。
+const layout = await js(`(() => {
+  const dlg = document.querySelector('[role="dialog"]')
+  if (!dlg) return null
+  const grids = [...dlg.querySelectorAll('div[class*="grid"]')].map((g) => String(g.className))
+  const twoCol = grids.filter((c) => c.includes('grid-cols-2'))
+  // 设置项容器：字段那张栅格里除小节标题（h3）以外的直接子元素。
+  const pane = [...dlg.querySelectorAll('div[class*="grid"]')].find((g) => g.querySelector('input, textarea, button[role=switch]'))
+  const items = pane ? [...pane.children].filter((el) => el.tagName !== 'H3') : []
+  const widths = [...new Set(items.map((el) => Math.round(el.getBoundingClientRect().width)))]
+  const heights = [...new Set(items.map((el) => Math.round(el.getBoundingClientRect().height)))]
+  return { twoCol: twoCol.length, nav: dlg.querySelectorAll('button[aria-current]').length, items: items.length, widths, heights }
+})()`)
+// 两种版式各有各的预期，判据跟着版式走：
+//   · 非标题字段 ≤6：一页平铺、单列、全部挂载（1.5.0 起一直是这一支）；
+//   · >6：hub 自己换成「左导航 + 右侧两列」、一次只挂当前那一组
+//     （hub 1.4.0 源码：`large = fields.length > 6`，`paged = large && sections.length > 1`）。
+// 2026-10-07 站长要求加「节点地球」与「主题模式」，于是走的是后一支 —— 别把「有导航」当成排版坏了。
+const paged = hasNav
+check(paged ? '排版：>6 项时按 hub 的设计切成两列 + 分组导航' : '排版：≤6 项时一页平铺、单列、无导航',
+  !!layout && (paged ? layout.twoCol > 0 && layout.nav === groups.length : layout.twoCol === 0 && layout.nav <= 1),
+  layout ? `两列容器 ${layout.twoCol} 个、导航项 ${layout.nav} 个（分组 ${groups.length} 个）` : '量不到')
+check(paged ? '排版：一次只挂当前那一组' : '排版：设置项全部挂载',
+  !!layout && (paged ? layout.items > 0 && layout.items < declaredKeys.length : layout.items === declaredKeys.length),
+  `挂载 ${layout?.items} 项 / 声明 ${declaredKeys.length} 项`)
+check('排版：当前挂载的那些项同宽（没有半格）',
+  !!layout && layout.widths.length === 1, `宽度 ${JSON.stringify(layout?.widths ?? [])}`)
 // 说明文案占几行才是这次的病根：两列时半宽，四五行的说明既折得碎又把并排两项拉得一高一矮。
 // 逐项按 theme.json 里 help 的**原文**定位那个元素（文本完全相等），量它的高度 / 行高。
 async function helpLines(help) {
@@ -237,17 +392,19 @@ async function helpLines(help) {
     return Math.round(el.getBoundingClientRect().height / lh)
   })()`)
 }
+// 说明占几行才是这条护栏的病根：两列时每格只有 309px（实测），四五行既折得碎又把并排两项拉得一高一矮。
+// 单列（462px）按 ≤2 行断；两列版式放宽到 ≤3 行 —— 站长 2026-10-03 明确要「备注怎么用」写进面板，
+// 那段话在 309px 里正好 3 行，属于有意为之。
+const maxLines = paged ? 3 : 2
 const wrapped = []
 for (const field of entries.filter((e) => e.type !== 'title' && e.help)) {
   const owner = groups.find((g) => g.fields.includes(field))
   await openGroup(owner?.label ?? '')
   const n = await helpLines(field.help)
-  if (n > 2 || n < 1) wrapped.push(`${field.label}=${n < 0 ? '没找到' : n + ' 行'}`)
+  if (n > maxLines || n < 1) wrapped.push(`${field.label}=${n < 0 ? '没找到' : n + ' 行'}`)
 }
-// 病根是**两列半宽**下的四五行，不是「说明必须恰好一行」：单列 462px 里说明折成两行是正常的，
-// 1.6.0 的「养鸡场入口」要讲清留空 / off / 地址三种状态、备注那一节的说明要讲清摊在哪儿 / 怎么填，
-// 压成一行就只能删掉站长唯一的说明书。所以门槛定在 ≤2 行——四五行的退化（半宽那份）照样报错。
-check('排版：每项说明至多两行（没有折成四五行的）', wrapped.length === 0, wrapped.join('、') || '全部 ≤2 行')
+// 病根是**两列半宽**下的四五行，不是「说明必须恰好一行」：单列 462px 里说明折成两行是正常的。
+check(`排版：每项说明至多 ${maxLines} 行（没有折成四五行的）`, wrapped.length === 0, wrapped.join('、') || `全部 ≤${maxLines} 行`)
 
 // 「卡片形态」这一格的**初值**是站长唯一看得见的那一处，也是最容易只改一半的地方：
 // 面板按 theme.json 现画（初值 = `saved[key] ?? default`），页面按 src/lib/site-settings.ts 的

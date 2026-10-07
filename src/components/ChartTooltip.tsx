@@ -68,7 +68,7 @@ export function ChartTooltip({
   const shown = narrow && capNarrow ? ordered.slice(0, capNarrow) : ordered
 
   return (
-    <div className="pointer-events-none max-w-[70vw] sk-chip border-[1.5px] border-stroke bg-popover px-2 py-1.5 text-[11px] leading-tight shadow-[4px_4px_0_var(--fill-oat)]">
+    <div data-tooltip="" className="pointer-events-none max-w-[70vw] sk-chip border-[1.5px] border-stroke bg-popover px-2 py-1.5 text-[11px] leading-tight shadow-[4px_4px_0_var(--fill-oat)]">
       {/* 时间戳自己格式化：默认 tooltip 的标题在这套样式里字号偏大，而且 hub 给的是秒。 */}
       <div className="mb-1 text-muted-foreground">{new Date(Number(label)).toLocaleString("zh-CN")}</div>
       <ul className="space-y-px">

@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import {
-  Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, LineChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
-} from "recharts"
 
 import { Info } from "lucide-react"
 
-import { ChartTooltip, PingTooltip } from "@/components/ChartTooltip"
+import { TimeChart } from "@/components/Chart"
+import { PingTooltip } from "@/components/ChartTooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Country, deployed, RemarkChips } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
 import {
-  axisBytes, axisTop, bytes, clockFor, despike, quarters, cpuName, osName, rate, timeTicks, uptime,
+  axisBytes, axisTop, bytes, despike, cpuName, osName, rate, uptime,
 } from "@/lib/format"
 import { hasDetailRemarks, remarkChips } from "@/lib/notes"
 import { remarksOnCards, type RemarkPlacement } from "@/lib/site-settings"
@@ -53,19 +50,6 @@ type Loss = Record<string, number>
 // 摊平」；但那是替访客做判断：想看一周走势的人只能在资源页签里看，而延迟恰恰是资源页签给不了的
 // 那条。窗口拉长不会让点数变多，hub 只会把桶放得更宽（168 小时 ≈ 9 分钟一桶，30 天以上走
 // 小时汇总），所以更长的探测史仍画得下、也仍看得见趋势。
-
-const AXIS = { stroke: "currentColor", fontSize: 11, tickLine: false, axisLine: false }
-
-// No grow-in animation: it would spend 1.5 s drawing a line across the panel on
-// every range change, on a page meant to be read at a glance, and on the latency
-// chart across seven hundred points per probe.
-const SERIES = { dot: false as const, strokeWidth: 1.5, isAnimationActive: false }
-
-// One width for every stacked panel's value axis. Sized to their own labels --
-// 40px under "100%", 68px under "172 MB" -- the four plot areas would be offset by
-// 28px, placing a CPU spike and the network spike that caused it at different x.
-const Y_WIDTH = 68
-
 // 延迟图最多同时画四条线路，所以这里备九个色相、每个再配一版短虚线：前九条走实线，
 // 第十条起色相重复、换线型。色相表是 index.css 里的 --chart-1..9，深浅两套只差亮度，
 // 同一台机器在两种主题下是同一种颜色。
@@ -74,11 +58,6 @@ const PALETTE = [
   ...COLORS.map((stroke) => ({ stroke, dash: undefined })),
   ...COLORS.map((stroke) => ({ stroke, dash: "6 3" })),
 ]
-
-// 四张资源图共用一枚光标线与一个提升的层级：recharts 把 tooltip 画在图表容器内部，
-// 不给 z-index 就会被下一块面板压住半截。
-const CURSOR = { stroke: "var(--border)" }
-const TOOLTIP_BOX = { zIndex: 30 }
 
 const TABS = [
   { key: "resources", label: "资源" },
@@ -98,7 +77,7 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      className={`sk-chip border-[1.5px] px-2.5 py-1 text-xs transition-colors ${
+      className={`tap tap-y-6 sk-chip border-[1.5px] px-2.5 py-1 text-xs transition-colors ${
         active
           ? "sk-chip-on border-stroke bg-butter font-medium text-foreground"
           : "border-transparent text-muted-foreground hover:bg-paper-warm"
@@ -351,21 +330,6 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
   // 挂在同一行的另一列上（`l<id>`），得连行一起拿到。
   const rowByTs = useMemo(() => new Map(pingRows.map((row) => [row.ts, row])), [pingRows])
 
-  // A real time axis rather than the category axis recharts defaults to: on a
-  // category axis ticks are selected by index, so a period the agent was offline
-  // for collapses to nothing.
-  const timeAxis = (rows: { ts: number }[], from = 0, to = rows.length - 1) => ({
-    dataKey: "ts",
-    type: "number" as const,
-    domain: ["dataMin", "dataMax"] as const,
-    // Explicit, or recharts places them at 05:14 and 10:22. Any that still collide
-    // are dropped by `minTickGap`.
-    ticks: rows.length ? timeTicks(rows[from].ts, rows[to].ts) : undefined,
-    tickFormatter: clockFor(hours),
-    minTickGap: hours > 24 ? 72 : 40,
-    ...AXIS,
-  })
-
   return (
     <div className="space-y-4">
       {/* 就地展开（紧凑形态点开一行）时不重复这台机器的身份行、规格与备注：那一行在表格里
@@ -544,80 +508,41 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
               {shownProbes.length === 0 ? (
                 <p className="py-8 text-center text-sm">没有选中任何探测</p>
               ) : (
-                <ResponsiveContainer>
-                  <ComposedChart data={pingRows}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-line" vertical={false} />
-                    <XAxis
-                      {...timeAxis(
-                        pingRows,
-                        Math.min(zoom?.[0] ?? 0, pingRows.length - 1),
-                        Math.min(zoom?.[1] ?? pingRows.length - 1, pingRows.length - 1),
-                      )}
-                    />
-                    {/* Not anchored at zero: these lines live in a narrow band
-                        far from it, and zero flattens every wobble. */}
-                    <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
-                    {/* 延迟图自己画 tooltip：四条线路叠在一起时，默认那枚只会说
-                        「名字 + 值」，看不出谁最慢、谁在丢包。最慢的排最前，超时的标
-                        「无响应」，有丢包的缀一段丢包率。 */}
-                    <Tooltip
-                      content={
-                        <PingTooltip
-                          rowByTs={rowByTs}
-                          probes={shownProbes}
-                          smooth={smooth}
-                          style={style}
-                        />
-                      }
-                      cursor={CURSOR}
-                      wrapperStyle={TOOLTIP_BOX}
-                    />
-                    {/* Behind the line, the range that bucket's answers
-                        spanned -- Smokeping's "smoke". At the day window a
-                        bucket moves 63 ms at the 90th percentile against the
-                        25 ms the trend moves, so a line alone draws the smaller
-                        of the two.
-
-                        Only with one probe on screen: rendered for four, the
-                        bands overlap into a fog and their extremes drag the
-                        axis from 165-385 out to 140-420. */}
-                    {shownProbes.length === 1 &&
-                      shownProbes.map((s) => (
-                        <Area
-                          key={`band${s.id}`}
-                          dataKey={`${smooth ? "c" : "b"}${s.id}`}
-                          stroke="none"
-                          fill={style(s.id).stroke}
-                          fillOpacity={0.16}
-                          isAnimationActive={false}
-                          tooltipType="none"
-                          legendType="none"
-                          connectNulls
-                        />
-                      ))}
-                    {shownProbes.map((s) => (
-                      <Line
-                        key={s.id}
-                        dataKey={`${smooth ? "s" : "t"}${s.id}`}
-                        name={s.name}
-                        stroke={style(s.id).stroke}
-                        strokeDasharray={style(s.id).dash}
-                        {...SERIES}
-                        connectNulls
-                      />
-                    ))}
-                    {/* Drag either handle to zoom into a stretch of the trend. */}
-                    <Brush
-                      dataKey="ts"
-                      height={22}
-                      travellerWidth={8}
-                      tickFormatter={clockFor(hours)}
-                      className="fill-muted"
-                      stroke="var(--color-muted-foreground)"
-                      onChange={(r) => setZoom([r.startIndex ?? 0, r.endIndex ?? pingRows.length - 1])}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <TimeChart
+                  rows={pingRows}
+                  series={[
+                    // 区间（band）只在屏上只有一个探测时画：四个叠在一起会糊成一片，还会把轴拉宽
+                    // （原注释那段「四个的 band 会互相叠成雾」）。
+                    ...(shownProbes.length === 1
+                      ? shownProbes.map((s) => ({
+                          key: `${smooth ? "c" : "b"}${s.id}`,
+                          name: s.name,
+                          color: style(s.id).stroke,
+                          band: true,
+                        }))
+                      : []),
+                    ...shownProbes.map((s) => ({
+                      key: `${smooth ? "s" : "t"}${s.id}`,
+                      name: s.name,
+                      color: style(s.id).stroke,
+                      dash: style(s.id).dash,
+                    })),
+                  ]}
+                  hours={hours}
+                  // 延迟轴不从 0 起：这些线路活在一条窄带里，锚到 0 会把起伏压平。
+                  domain="auto"
+                  unit="ms"
+                  left={52}
+                  from={Math.min(zoom?.[0] ?? 0, pingRows.length - 1)}
+                  to={Math.min(zoom?.[1] ?? pingRows.length - 1, pingRows.length - 1)}
+                  // 原来 recharts 的 Brush（22px 高的拖两端把手）换成「在图上横向拖选一段」+
+                  // 一枚「重置」：手机上那对手指头太细，而且这样代码少一半。
+                  onZoom={(from, to) => setZoom([from, to])}
+                  label="节点延迟走势"
+                  renderTooltip={(row) => (
+                    <PingTooltip active label={row.ts} rowByTs={rowByTs} probes={shownProbes} smooth={smooth} style={style} />
+                  )}
+                />
               )}
             </div>
 
@@ -671,19 +596,15 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
       ) : (
         <div className="space-y-5">
           <Panel title="CPU">
-            <ResponsiveContainer>
-              <AreaChart data={metricRows}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-line" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
-                <YAxis domain={[0, tops.cpu]} ticks={quarters(tops.cpu)} unit="%" width={Y_WIDTH} {...AXIS} />
-                <Tooltip
-                  content={<ChartTooltip format={(v) => `${v.toFixed(1)}%`} />}
-                  cursor={CURSOR}
-                  wrapperStyle={TOOLTIP_BOX}
-                />
-                <Area dataKey="cpu" name="CPU" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.15} {...SERIES} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <TimeChart
+              rows={metricRows}
+              series={[{ key: "cpu", name: "CPU", color: "var(--chart-1)", area: true }]}
+              hours={hours}
+              top={tops.cpu}
+              unit="%"
+              format={(v) => `${v.toFixed(1)}%`}
+              label="CPU 使用率走势"
+            />
           </Panel>
 
           {/* The axis top is the machine's memory, so the line's height is the
@@ -692,57 +613,48 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
               127 MB of a 457 MB box at the top of the panel. The size is in the
               title because the axis top is claiming it. */}
           <Panel title={`内存 · ${bytes(node.mem_total)}`}>
-            <ResponsiveContainer>
-              <AreaChart data={metricRows}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-line" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
-                <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} width={Y_WIDTH} {...AXIS} />
-                <Tooltip
-                  content={<ChartTooltip format={(v) => bytes(v)} />}
-                  cursor={CURSOR}
-                  wrapperStyle={TOOLTIP_BOX}
-                />
-                <Area dataKey="mem_used" name="内存" stroke="var(--chart-4)" fill="var(--chart-4)" fillOpacity={0.15} {...SERIES} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <TimeChart
+              rows={metricRows}
+              series={[{ key: "mem_used", name: "内存", color: "var(--chart-4)", area: true }]}
+              hours={hours}
+              top={node.mem_total}
+              yFormat={axisBytes}
+              format={(v) => bytes(v)}
+              label="内存使用量走势"
+            />
           </Panel>
 
           {/* A rate has no total to be a fraction of, so this one climbs the
               ladder like CPU rather than pinning to a capacity. */}
           <Panel title="网络速率">
-            <ResponsiveContainer>
-              <LineChart data={metricRows}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-line" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
-                <YAxis domain={[0, tops.rate]} ticks={quarters(tops.rate)} tickFormatter={axisBytes} unit="/s" width={Y_WIDTH} {...AXIS} />
-                <Tooltip
-                  content={<ChartTooltip format={(v) => rate(v)} />}
-                  cursor={CURSOR}
-                  wrapperStyle={TOOLTIP_BOX}
-                />
-                <Line dataKey="net_rx" name="下行" stroke="var(--ok)" {...SERIES} />
-                <Line dataKey="net_tx" name="上行" stroke="var(--chart-2)" {...SERIES} />
-              </LineChart>
-            </ResponsiveContainer>
+            <TimeChart
+              rows={metricRows}
+              series={[
+                { key: "net_rx", name: "下行", color: "var(--ok)" },
+                { key: "net_tx", name: "上行", color: "var(--chart-2)" },
+              ]}
+              hours={hours}
+              top={tops.rate}
+              unit="/s"
+              yFormat={axisBytes}
+              format={(v) => rate(v)}
+              label="网络速率走势"
+            />
           </Panel>
 
           {/* The disk it is filling, for the same reason as memory: a node
               using 2.7% of its disk draws along the top of the panel when the
               axis tracks the window's own maximum. */}
           <Panel title={`硬盘 · ${bytes(node.disk_total)}`}>
-            <ResponsiveContainer>
-              <AreaChart data={metricRows}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-line" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
-                <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} width={Y_WIDTH} {...AXIS} />
-                <Tooltip
-                  content={<ChartTooltip format={(v) => bytes(v)} />}
-                  cursor={CURSOR}
-                  wrapperStyle={TOOLTIP_BOX}
-                />
-                <Area dataKey="disk_used" name="硬盘" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.15} {...SERIES} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <TimeChart
+              rows={metricRows}
+              series={[{ key: "disk_used", name: "硬盘", color: "var(--chart-3)", area: true }]}
+              hours={hours}
+              top={node.disk_total}
+              yFormat={axisBytes}
+              format={(v) => bytes(v)}
+              label="硬盘使用量走势"
+            />
           </Panel>
         </div>
       )}

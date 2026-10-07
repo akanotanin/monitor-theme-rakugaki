@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 
 import {
-  camera, clampLat, globeCaption, globeNodes, globeProfile, graticule, inkWidth, landPaths, layoutLabels,
+  camera, clampLat, globeCaption, globeNodes, globeProfile, graticule, inkWidthWith, landPaths, layoutLabels,
   links, prepareRings, regionRows, sweepLonAt, sweepOpacity, VIEW, wrapLon, type Placed, type Quality,
 } from "@/lib/globe"
 import { COARSE_WORLD_OUTLINES, WORLD_OUTLINES } from "@/lib/world"
@@ -26,6 +26,32 @@ import type { Node } from "@/lib/api"
  * 触摸手势全部吃掉（`touch-action: none`），在手机上等于在一块 280px 高的区域里
  * 划不动页面 —— 地球是拿来看的，不值得挡住滚动。
  */
+/**
+ * 标签的真实字宽（用户单位）：`canvas.measureText` 按 `.globe-label` 那一套字体量一次。
+ *
+ * 为什么要真量：上游那套「半角 5.05 / 全角 8.6」的估法**偏小一成**，而判「这行字放不放得下」
+ * 是拿它算的 —— 估小了就把长名字留在原地，溢出的半句话被 SVG 的视口**直接裁掉**，
+ * 页面上什么都不报（见 references/svg-globe-port.md 第 2 条）。真量之后：
+ * 放得下的不再截、放不下的截到真放得下，两侧都不再有「半个字」。
+ *
+ * 字体串与 index.css 的 `.globe-label` 必须一致（字号也在这里，改一处要改两处）。
+ * 量不出来（老浏览器 / 没有 canvas）返回 null，调用方退回估法。
+ */
+const LABEL_FONT = '9.35px ui-monospace, SFMono-Regular, "IBM Plex Mono", monospace'
+let labelCtx: CanvasRenderingContext2D | null | undefined
+function measureLabel(text: string): number | null {
+  if (labelCtx === undefined) {
+    try {
+      labelCtx = document.createElement("canvas").getContext("2d")
+      if (labelCtx) labelCtx.font = LABEL_FONT
+    } catch {
+      labelCtx = null
+    }
+  }
+  if (!labelCtx) return null
+  return labelCtx.measureText(text).width
+}
+
 export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
   /** 当前分组里的节点（与概览卡片、下面的列表同一批）。 */
   nodes: Node[]
@@ -39,16 +65,25 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
   onWarm: () => void
 }) {
   const narrow = useNarrow()
-  // 窄屏走 low 档：粗岸线 + 一格 60° 的经纬网、不画扫掠、不画连线，一帧要算的点数
-  // 从 ~500 掉到 ~120。手机上省的是发热与电，不是"看着更快"。
-  const quality: Quality = narrow ? "low" : "medium"
+  /**
+   * ★ 窄屏（≤720px）**不再降档**。2026-10-07 站长看过手机上的 low 档之后说「地球太简陋了」——
+   * 那一档只有 104 个点的粗岸线（一格 60° 的网、不画扫掠、不画引线），确实就是一张草图。
+   * 现在跟桌面同档：detailed 岸线（79 环 / 1483 点，但每帧只投影**正面那一半**，约 500 点）、
+   * 30° 经纬网、1 条扫掠、引线。代价是手机上每帧多做约 4 倍的点与路径字符串 ——
+   * **真机若发烫或掉帧，回退就是下面那个开关改回 `true`（一行）**，别犹豫。
+   */
+  const NARROW_LOW_TIER = false
+  const quality: Quality = narrow && NARROW_LOW_TIER ? "low" : "medium"
   const profile = useMemo(() => globeProfile(quality), [quality])
   const prep = useMemo(
-    () => prepareRings(profile.land === "coarse" ? COARSE_WORLD_OUTLINES : WORLD_OUTLINES, profile.coastStride),
+    () => prepareRings(profile.land === "coarse" ? COARSE_WORLD_OUTLINES : WORLD_OUTLINES),
     [profile],
   )
   const points = useMemo(() => globeNodes(nodes), [nodes])
   const rows = useMemo(() => regionRows(nodes), [nodes])
+  // 「全部」那一行的悬停说明：合计里有多少台认不出国家（不上地球与地区列表）——
+  // 「全部 N」与地区分项合计对不上这件事，就在那里有一句明面上的说法。
+  const unplaced = nodes.length - rows.reduce((sum, row) => sum + row.count, 0)
 
   // 初始视角与上游一致：东经 80°、北纬 30°（亚洲那一面，机器最密的地方）。
   const [view, setView] = useState({ lon: 80, lat: 30 })
@@ -186,24 +221,45 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
    * 所以这里量出容器实际比例、算出每侧还剩多少余量，不够就把 viewBox 往两边撑开
    * （最多各 140，再长宁可小一点也不能裁）。宽屏上算出来是负的 → 撑开 0，与上游逐像素相同。
    */
+  // 真量函数：一次量不出来（老浏览器）就整个退回估法，别每帧都试。
+  const measured = useMemo(() => {
+    const probe = measureLabel("W")
+    return probe === null ? undefined : (text: string) => measureLabel(text) as number
+  }, [])
   const canvas = useMemo(() => {
     const plain = { pad: 0, room: Number.POSITIVE_INFINITY, viewBox: `0 0 ${VIEW.w} ${VIEW.h}` }
     if (!box || !points.length) return plain
-    const ink = Math.max(0, ...points.map((p) => Math.max(inkWidth(`${p.name} · ${p.code}`), inkWidth(`${p.code} · ${p.name}`))))
+    const ink = Math.max(0, ...points.map((p) => Math.max(
+      inkWidthWith(measured, `${p.name} · ${p.code}`),
+      inkWidthWith(measured, `${p.code} · ${p.name}`),
+    )))
     const scale = Math.min(box.w / VIEW.w, box.h / VIEW.h)
     // 一侧还剩多少余量（用户单位）：宽屏是"容器比画布宽"留下的空白，窄屏约等于 0。
     const room = (box.w / scale - VIEW.w) / 2
     // 撑开最多 36：再长宁可截字（见 labelMax），也不能让地球被挤小一圈 ——
     // 460 的画布撑到 532 已经让圆盘小 13%，再多就不是"复刻"那个地球了。
-    const pad = Math.max(0, Math.min(36, ink + 6 - (126 + room)))
+    // （123 = 两摞标签各自距画布边缘的距离，与 globe.ts 的 stack 同一组数。）
+    const pad = Math.max(0, Math.min(36, ink + 6 - (123 + room)))
     return {
       pad,
       room,
       viewBox: pad ? `${-pad.toFixed(1)} 0 ${(VIEW.w + pad * 2).toFixed(1)} ${VIEW.h}` : `0 0 ${VIEW.w} ${VIEW.h}`,
     }
-  }, [box, points])
-  // 两摞标签各自距画布边缘 126（见 globe.ts 的 stack），加上余量与撑开量就是这一行长最多能有多宽。
-  const labelMax = 126 + canvas.room + canvas.pad - 6
+  }, [box, points, measured])
+  /**
+   * 两摞标签各自距画布边缘 123（见 globe.ts 的 stack），这一行长最多能有多宽 ——
+   * ★ 是 `max(room, pad)`，**不是** `room + pad`（这里踩过一次，`clipped` 那条护栏当时
+   * 因为正则写错静默失效，一直没报）：
+   *
+   *   · 容器比画布**高**（桌面）：缩放由高度定死，撑开 viewBox 只改坐标框、不改缩放，
+   *     但两侧的余量会**正好少掉 pad** —— 撑开的 pad 是从余量里拿的，两者相加等于
+   *     把同一段空白算两遍。可用的就是 `123 + room`。
+   *   · 容器比画布**宽**（手机按宽度贴合）：`room = 0`，撑开的 pad 让整个画布（含标签）
+   *     等比缩小，标签反而多出 pad 的余量 —— 可用的是 `123 + pad`。
+   *
+   * 取 max 两种情况都对；再用 -6 留一点墨迹余量（描边是 3，见 inkWidthWith）。
+   */
+  const labelMax = 123 + Math.max(canvas.room, canvas.pad) - 6
 
   // ★ 每一帧在这里算一遍：岸线（几百个点）、经纬网、标签堆叠、连线。
   // 这些函数都是纯的（标签左右侧的记忆那个 Map 由调用方持有），没有副作用。
@@ -214,7 +270,7 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
   // 圆心附近 ±18 的机器（正在转到中缝上的那几台）如果每帧重新判左右，标签会在两摞之间
   // 来回跳。读它是幂等的：同一帧算多少次结果都一样，只是把"上一帧选的那一侧"记下来。
   // eslint-disable-next-line react/refs -- 跨帧记忆，见上
-  const placed = layoutLabels(cam, points, sides.current, labelMax)
+  const placed = layoutLabels(cam, points, sides.current, labelMax, VIEW.cx, measured)
   const arcs = links(placed, profile.linkMode)
   const aim = pinned && region ? rows.find((row) => row.region.key === region)?.aim : undefined
   const marker = aim ? cam.at(aim[0], aim[1]) : null
@@ -277,7 +333,13 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
         <div className="globe-side-title">
           地区{pinned && region ? " · 已定位" : ""}
         </div>
-        <button type="button" className="globe-reg globe-reg-all" aria-pressed={!region} onClick={() => pick(null)}>
+        <button
+          type="button"
+          className="globe-reg globe-reg-all"
+          aria-pressed={!region}
+          onClick={() => pick(null)}
+          title={unplaced > 0 ? `共 ${nodes.length} 台，其中 ${unplaced} 台认不出国家（不上地球与地区列表）` : `共 ${nodes.length} 台`}
+        >
           <span>全部</span>
           <b>{nodes.length}</b>
         </button>
@@ -288,12 +350,16 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
             className="globe-reg"
             aria-pressed={region === row.region.key}
             onClick={() => pick(row.region.key, row.aim)}
+            title={row.offline > 0 ? `${row.count} 台 · ${row.offline} 台离线` : undefined}
           >
             <span>
               <RegionFlag code={row.region.code} />
               {row.region.label}
             </span>
-            <b>{row.count}</b>
+            <b>
+              {row.count}
+              {row.offline > 0 && <i className="globe-reg-dot" aria-hidden="true" />}
+            </b>
           </button>
         ))}
       </aside>
@@ -313,11 +379,18 @@ function Pin({ p }: { p: Placed }) {
     <g>
       <path className="globe-stem" d={`M ${cx} ${cy} L ${p.lx.toFixed(1)} ${p.ly.toFixed(1)}`} />
       <circle className="globe-pin" cx={cx} cy={cy} r={2.1} />
+      {/* 多台地区：针边上挂一个小小的台数（标签里也写着「地区 ×N」，两处都在，
+          因为标签可能被挤掉、针本身也常常落在标签的另一头）。 */}
+      {p.count > 1 && (
+        <text className="globe-count" x={p.px + 4.5} y={p.py - 3.5}>
+          {p.count}
+        </text>
+      )}
       <text className="globe-label" x={p.lx + (p.end ? -3 : 3)} y={p.ly + 3} textAnchor={p.end ? "end" : "start"}>
         {p.label}
       </text>
-      <circle className="hit" cx={cx} cy={cy} r={9} fill="transparent" data-node={p.id} data-index={p.index} data-region={p.region.key} data-online={p.online ? "1" : "0"}>
-        <title>打开 {p.name}</title>
+      <circle className="hit" cx={cx} cy={cy} r={9} fill="transparent" data-node={p.id} data-index={p.index} data-region={p.region.key} data-online={p.online ? "1" : "0"} data-count={p.count}>
+        <title>{p.count > 1 ? `${p.region.label}：${p.count} 台（打开其中第一台）` : `打开 ${p.name}`}</title>
       </circle>
     </g>
   )
