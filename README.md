@@ -11,11 +11,7 @@
 
 节点地球：
 
-![节点地球](preview-globe.png?v=2)
-
-同一机位的深色版：
-
-![节点地球（深色）](preview-globe-dark.png?v=1)
+![节点地球](preview-globe.png?v=3)
 
 列表页顶部那颗正射投影的地球（顶栏那枚地球图标可以关掉，默认开着；开关记在访客自己的浏览器里）。
 
@@ -29,15 +25,11 @@
 
 | **简约形态（默认）** | **经典形态** |
 |:---:|:---:|
-| ![简约形态](preview-plain.png?v=2) | ![经典形态](preview-classic.png?v=3) |
+| ![简约形态](preview-plain.png?v=3) | ![经典形态](preview-classic.png?v=4) |
 | **延迟形态** | **详细形态** |
-| ![延迟形态](preview-latency.png?v=3) | ![详细形态](preview-detailed.png?v=2) |
+| ![延迟形态](preview-latency.png?v=4) | ![详细形态](preview-detailed.png?v=3) |
 | **紧凑形态** | |
-| ![紧凑形态](preview-compact.png?v=2) | |
-
-手机（390×844）：
-
-<img src="preview-mobile.png?v=1" width="230" alt="手机上的列表页首屏">
+| ![紧凑形态](preview-compact.png?v=3) | |
 
 ## 访客自己换卡片形态
 
