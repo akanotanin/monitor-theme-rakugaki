@@ -2,7 +2,7 @@
   "name": "rakugaki",
   "short": "rakugaki",
   "description": "极简探针（Monitor）的手绘纸感主题：五种卡片形态、节点地球、分组筛选、明暗双色。",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-rakugaki",
   "config": [
@@ -15,7 +15,7 @@
       "key": "globeOn",
       "label": "节点地球",
       "default": true,
-      "help": "列表页顶部那颗会自转的地球；关掉＝整块不渲染（访客也能自己关）。"
+      "help": "列表页顶部那颗会自转的地球；关掉＝整块不渲染，顶栏那枚开关也一起收起（开着时访客可自行关）。"
     },
     {
       "type": "select",

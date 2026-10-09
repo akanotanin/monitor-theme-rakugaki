@@ -272,6 +272,20 @@ const PLAIN_PROBE = `JSON.stringify((() => {
   const foot = box ? box.children[2] : null
   const name = card.querySelector('h3')
   const cs = (el) => el ? getComputedStyle(el) : null
+  // 进度条那根条：填色的**有效颜色**（alpha 合成到卡片底之后）与 alpha 本身。
+  // 用 canvas 读回 sRGB（color-mix/oklch 手算容易错）：先铺卡片底、再叠填色 = 实际观感。
+  const paint = (under, top) => {
+    const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d')
+    if (under) { x.fillStyle = under; x.fillRect(0, 0, 1, 1) }
+    if (top) { x.fillStyle = top; x.fillRect(0, 0, 1, 1) }
+    const d = x.getImageData(0, 0, 1, 1).data
+    return { rgb: 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')', alpha: +(d[3] / 255).toFixed(3) }
+  }
+  const fillRaw = bar && bar.firstElementChild ? cs(bar.firstElementChild).backgroundColor : null
+  // ★ 颜色一律**用 canvas 合成成 sRGB 之后再比**：本站的 token 是 color-mix()，拿正则去抠数字
+  //   会得到垃圾；卡片本身的 background 还常常是透明的，得先合成到页面底上才是访客看到的那一层。
+  const bodyBg = getComputedStyle(document.body).backgroundColor
+  const cardEff = paint(bodyBg, cs(card).backgroundColor).rgb
   return {
     cardBorder: cs(card).borderTopWidth,
     cardBorderStyle: cs(card).borderTopStyle,
@@ -280,6 +294,11 @@ const PLAIN_PROBE = `JSON.stringify((() => {
     nameFamily: name ? cs(name).fontFamily.split(',')[0] : null,
     labelColor: label ? cs(label).color : null,
     pctColor: row ? cs(row.lastElementChild).color : null,
+    cardBg: cardEff,
+    fillColor: fillRaw,
+    fillAlpha: fillRaw ? paint(null, fillRaw).alpha : null,
+    fillComposite: fillRaw ? paint(cardEff, fillRaw).rgb : null,
+    pctComposite: row && row.lastElementChild ? paint(cardEff, cs(row.lastElementChild).color).rgb : null,
     footColor: foot ? cs(foot).color : null,
     barH: bar ? cs(bar).height : null,
     barTop: bar ? cs(bar).marginTop : null,
@@ -291,6 +310,16 @@ const PLAIN_PROBE = `JSON.stringify((() => {
     text: card.innerText.replace(/\\n/g, ' | '),
   }
 })())`
+
+/** 两枚颜色字符串（rgb() 形式）之间的 WCAG 对比度。 */
+function contrast(a, b) {
+  const lum = (s) => {
+    const [r, g, bl] = s.match(/\d+/g).slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl
+  }
+  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m)
+  return +((x + 0.05) / (y + 0.05)).toFixed(2)
+}
 
 async function render(cfg, tag = '') {
   config = cfg
@@ -390,6 +419,17 @@ let classicStyle = null
   check('经典：条 10px、底注 12px、格行距 16px',
     classicStyle.barH === '10px' && classicStyle.footSize === '12px' && classicStyle.rowGap === '16px',
     JSON.stringify({ barH: classicStyle.barH, footSize: classicStyle.footSize, rowGap: classicStyle.rowGap }))
+  // ★ 2026-10-09：与主主题同步「进度条减重」—— 填色不再是纯墨（纯墨＝卡片上最重的一笔）。
+  //   下面两条把「填色带透明度」与「有效对比落在 3.5–8:1、且轻于正文」钉住：下限 3.5 是
+  //   图形可读的底线（WCAG 非文本 3:1），上限 8 表示必须明显轻于正文。判据量的是**有效颜色**
+  //   （alpha 合成到卡片底之后），不是 fillStyle 里的那个值。改坏任一条都会红。
+  check('★ 经典：进度条填色不再是纯墨色（纯墨＝卡片上最重的一笔）',
+    classicStyle.fillAlpha !== null && classicStyle.fillAlpha < 1, `alpha=${classicStyle.fillAlpha}｜${classicStyle.fillColor}`)
+  check('★ 经典：进度条的有效对比度落在「轻于正文、又清楚看得见」的 3.5–8:1',
+    contrast(classicStyle.fillComposite, classicStyle.cardBg) >= 3.5 &&
+    contrast(classicStyle.fillComposite, classicStyle.cardBg) <= 8 &&
+    contrast(classicStyle.fillComposite, classicStyle.cardBg) < contrast(classicStyle.pctComposite, classicStyle.cardBg),
+    `填色 ${contrast(classicStyle.fillComposite, classicStyle.cardBg)}:1（${classicStyle.fillComposite}）｜ 正文 ${contrast(classicStyle.pctComposite, classicStyle.cardBg)}:1（${classicStyle.pctComposite}）｜ 卡底 ${classicStyle.cardBg}`)
   check('皮肤层没被这次改动碰到（2px 墨线 + 6px 硬偏移影子）',
     classicStyle.cardBorder === '2px' && classicStyle.cardBorderStyle === 'solid' && /6px 6px/.test(classicStyle.cardShadow),
     JSON.stringify({ b: classicStyle.cardBorder, s: classicStyle.cardShadow }))
@@ -424,6 +464,14 @@ let classicStyle = null
   check('简约：条仍是手画的墨线槽（墨色描边没被这一档改掉）',
     s.barBorderStyle === 'solid' && parseFloat(s.barBorder) >= 1 && s.barBorder === classicStyle.barBorder,
     `${s.barBorder}/${s.barBorderStyle}（经典 ${classicStyle.barBorder}）`)
+  // 同一条判据在**这一档**也要成立：简约那一套只是把条压细，填色口径与经典一致（同一族零件）。
+  check('★ 简约：进度条填色不再是纯墨色（两档同一口径）',
+    s.fillAlpha !== null && s.fillAlpha < 1, `alpha=${s.fillAlpha}｜${s.fillColor}`)
+  check('★ 简约：进度条的有效对比度落在 3.5–8:1 且轻于正文',
+    contrast(s.fillComposite, s.cardBg) >= 3.5 &&
+    contrast(s.fillComposite, s.cardBg) <= 8 &&
+    contrast(s.fillComposite, s.cardBg) < contrast(s.pctComposite, s.cardBg),
+    `填色 ${contrast(s.fillComposite, s.cardBg)}:1（${s.fillComposite}）｜ 正文 ${contrast(s.pctComposite, s.cardBg)}:1（${s.pctComposite}）｜ 卡底 ${s.cardBg}`)
   check('简约：底注降到 11px', s.footSize === '11px', s.footSize)
   check('简约：读数格行距收紧到 12px（经典 16px）', s.rowGap === '12px', s.rowGap)
   // 名字这一档在 rakugaki 里**不动**：包里只随附 Newsreader 的 600 一档（见 FONTS.md），

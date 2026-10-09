@@ -348,15 +348,17 @@
    光靠黄油色在深色下不够醒目——深色的便签色本来就压得暗。 */
 .sk-chip-on { box-shadow: 2px 2px 0 var(--stroke); }
 
-/* 进度条：一条手画的墨线槽 + 里面一段实心墨。空槽用纸的暖色，满槽是墨—— 
-   和「一支笔在格子里涂满」同一个意思。 */
+/* 进度条：一条手画的墨线槽 + 里面一段墨——和「一支笔在格子里涂满」同一个意思。
+   填色是**墨的 70%**（2026-10-09 与主主题同步「减重」：纯墨是卡片上最重的一笔，一页 4×N 根条
+   会把读数压住；70% 合成到纸底后亮 ≈6.6:1 / 暗 ≈7.2:1，轻于正文又高于图形判读的下限）。
+   判据在 tools/verify_card_styles.mjs。 */
 .sk-bar {
   border: 1.5px solid var(--stroke);
   border-radius: var(--r-bar);
   background: var(--paper-warm);
   overflow: hidden;
 }
-.sk-bar-fill { background: var(--stroke); transition: width .5s ease; }
+.sk-bar-fill { background: color-mix(in srgb, var(--stroke) 70%, transparent); transition: width .5s ease; }
 /* 流量条是唯一一条会用完的额度：超过 80% 转成陶土橙，提醒该看一眼了。
    其余三条（CPU / 内存 / 硬盘）保持纯墨色——它们的「满」与额度不同义。 */
 .sk-bar-hot .sk-bar-fill { background: var(--accent-2); }

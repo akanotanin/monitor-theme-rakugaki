@@ -228,6 +228,8 @@ export default function App() {
   const [region, setRegion] = useState<string | null>(null)
   // 访客自己的两个偏好（都只存在他自己浏览器里，见 @/lib/theme-config）：
   // 地球看不看，以及列表用哪种卡片形态 —— 后者没选过时跟着站长的设置走。
+  // ★ 站长那档是「节点地球」的**闸门**：他关掉时 `globeOn` 一律是 false，顶栏那枚开关也一起
+  //   不挂（见下面那段渲染条件）——关掉的整块不该在页面上留一枚点了没落点的按钮。
   const [globeOn, toggleGlobe] = useGlobeVisible(config.globeOn)
   const [cardStyle, chooseStyle] = useCardStyle(config.cardStyle)
   // 顶栏那个搜索框：词与「窄屏那一行展开了没」都留在这儿 —— 进详情页再回来，
@@ -428,8 +430,10 @@ export default function App() {
             <CardStyleMenu value={cardStyle} siteDefault={config.cardStyle} onPick={chooseStyle} />
           )}
           {/* 地球开关：只长在列表页 —— 地球就在那一页的顶上，站在某台机器页里按它没有落点。
+              ★ 站长在「主题设置 → 节点地球」里关掉时**整枚按钮都不挂**（不是藏起来／不是禁用）：
+              那一块功能是关着的，留着按钮就成了一件点了什么也不开的摆设（访客会以为「点不动」）。
               与养鸡场入口、主题开关同规格（图标 + 悬停提示，不带文字）。 */}
-          {open === null && (
+          {open === null && config.globeOn && (
             <Button
               variant="ghost"
               size="icon"
@@ -539,13 +543,13 @@ export default function App() {
           border-b 呼应，页面上下就都框住了），留白按「卡→线 24px、线→字 16px、字→底 20px」
           拉开，它才读成一个明确的页脚区。分割线只出现在窄屏（<640px，与署名居中的断点同一档）
           —— 为手机改的东西不落到电脑端，桌面维持原样。
-          「rakugaki」那截点开去本主题的源码仓库 —— 新标签页打开，别把访客从状态页带走
+          「Rakugaki」那截点开去本主题的源码仓库 —— 新标签页打开，别把访客从状态页带走
           （链接地址与 theme.json 的 url 是同一个，见上面的 REPO_URL）。样式见 index.css 的 .theme-credit。 */}
       <footer className="mx-auto mt-2 w-full max-w-[1280px] border-t px-4 pb-5 pt-4 sm:mt-0 sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-1">
         <p className="theme-credit text-center sm:pr-3 sm:text-right">
-          Theme by{" "}
+          Theme:{" "}
           <a href={REPO_URL} target="_blank" rel="noreferrer">
-            rakugaki
+            Rakugaki
           </a>
         </p>
       </footer>
