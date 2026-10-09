@@ -2,7 +2,7 @@
   "name": "rakugaki",
   "short": "rakugaki",
   "description": "极简探针（Monitor）的手绘纸感主题：五种卡片形态、节点地球、分组筛选、明暗双色。",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-rakugaki",
   "config": [
