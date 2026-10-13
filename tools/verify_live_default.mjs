@@ -74,7 +74,7 @@ const PROBE = `JSON.stringify((() => {
   }
 })())`
 
-async function load(body, tag) {
+async function load(body, tag, want = WANT) {
   stubBody = body
   configHits = 0; metricHits.length = 0
   if (body) await send('Fetch.enable', { patterns: [{ urlPattern: '*api/themes/*/config*', requestStage: 'Request' }] })
@@ -87,6 +87,15 @@ async function load(body, tag) {
     if (dom && dom.cards > 0 && dom.netRow + dom.netGrid > 0) break
   }
   await sleep(1500) // 让延迟请求（若有）落地
+  // 延迟档的三行要等 ping 响应回来才渲染；经 CF/代理比本地桩慢，1.5 秒可能还没画上——
+  // 多轮询几秒再判定，别把自己的时序问题当成「这一档的形状错了」（踩过：真站 2 条假红）。
+  if (PING_STYLES.includes(want)) {
+    for (let i = 0; i < 12; i++) {
+      const rows = await js(`document.querySelectorAll('[data-latency] [data-probe-name]').length`)
+      if (rows >= 3) { dom = JSON.parse(await js(PROBE)); break }
+      await sleep(400)
+    }
+  }
   return { dom, hits: configHits, metric: metricHits.length }
 }
 
@@ -102,7 +111,7 @@ const PASSES = [
 ]
 
 for (const p of PASSES) {
-  const { dom, hits, metric } = await load(p.body, p.tag)
+  const { dom, hits, metric } = await load(p.body, p.tag, p.want)
   console.log(`\n—— ${p.label}`)
   if (!dom || dom.cards === 0) { check(`${p.label}：页面渲染出了卡片`, false, JSON.stringify(dom)); continue }
   console.log(`   卡片 ${dom.cards} 张 / 网络行 ${dom.netRow} / 四格 ${dom.netGrid} / 读数盒 ${dom.infoBox} / 延迟请求 ${metric} / 设置请求 ${hits}`)
