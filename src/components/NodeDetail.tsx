@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { Info } from "lucide-react"
+import { Check, Copy, Info } from "lucide-react"
 
 import { TimeChart } from "@/components/Chart"
 import { PingTooltip } from "@/components/ChartTooltip"
@@ -163,7 +163,25 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
     return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey) }
   }, [peekOpen])
   // 就地展开只讲延迟（那一格点开就是为了看延迟），所以页签默认落在延迟而不是资源。
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>(embedded ? "latency" : "resources")
+  // 整页详情还听地址栏的：`?tab=latency` 时直接落在「网络延迟」—— 卡面延迟行那一下
+  // （以及紧凑展开行的「完整详情 ›」）就是靠它直达的（2026-10-12 的创意项）；
+  // 其余一概落「资源」，与从前一致。刷新同理：URL 里带着哪个页签，落哪个。
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>(
+    embedded ? "latency" : new URLSearchParams(location.search).get("tab") === "latency" ? "latency" : "resources",
+  )
+  /**
+   * 切页签（整页详情）：顺手把 `?tab=` 同步进地址栏（replace，不往历史里塞条目）——
+   * 刷一下还落在同一个页签，分享出去的链接也指得准。就地展开（embedded）不动地址：
+   * 那一格的页签属于表格里的这一行，不属于这一页的 URL。
+   */
+  const chooseTab = (key: (typeof TABS)[number]["key"]) => {
+    setTab(key)
+    if (embedded) return
+    const url = new URL(location.href)
+    if (key === "latency") url.searchParams.set("tab", "latency")
+    else url.searchParams.delete("tab")
+    history.replaceState({}, "", url)
+  }
   // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
   // different questions.
   const [ranges, setRanges] = useState({ resources: 6, latency: 6 })
@@ -337,10 +355,12 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
       {!embedded && (
       <>
       {/* 旗子在前、名字在后，与卡片上的次序一致。状态徽章与 agent 版本不在这行：
-          在线时长已经并进下面的信息项，agent 版本对访客没有意义。 */}
+          在线时长已经并进下面的信息项，agent 版本对访客没有意义。
+          名字后那枚小按钮＝把机器名复制进剪贴板（站长自用的快捷，见 CopyName）。 */}
       <div className="flex items-center gap-2">
         <Country node={node} />
         <h2 className="font-display truncate text-xl font-semibold tracking-[-.01em]">{node.name}</h2>
+        <CopyName name={node.name} />
       </div>
 
       {/* One flat row of facts: what is left after the traffic figures moved
@@ -384,7 +404,7 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
         {!embedded && (
         <div className="flex gap-1">
           {TABS.map((t) => (
-            <Tab key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
+            <Tab key={t.key} active={tab === t.key} onClick={() => chooseTab(t.key)}>
               {t.label}
             </Tab>
           ))}
@@ -664,5 +684,46 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * 标题行右端那枚「复制机器名」（只长在整页详情上）：一键把名字取进剪贴板去 ssh 用 ——
+ * 站长自用的快捷，所以刻意低调（小图标、悬停才浮出一层浅底，不与旁边的信息争视线）。
+ *
+ * 按下后换一枚对勾、悬停说明换成「已复制」，1.6 秒后回到原样（连点可重复复制）。
+ * 剪贴板 API 只在安全上下文可用（https / localhost）；不可用时如实换成「复制失败」的
+ * 说明文字，**不假装成功** —— 静态预览那种普通 http 场景走得到这一支。
+ */
+function CopyName({ name }: { name: string }) {
+  const [state, setState] = useState<"idle" | "ok" | "fail">("idle")
+  const timer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const copy = async () => {
+    let ok = false
+    try {
+      await navigator.clipboard.writeText(name)
+      ok = true
+    } catch {
+      ok = false
+    }
+    setState(ok ? "ok" : "fail")
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setState("idle"), 1600)
+  }
+  return (
+    <button
+      type="button"
+      data-copy-name=""
+      /* 命中区用**纵向型**（`tap-y-6`：上下各扩 10px → 24×44），不用四向的 tap-8：
+         详情页标题行这批控件（资源/网络延迟/量程段）的口径就是「横向不动」（四向外扩
+         会互相盖住，护栏量着「横向撑开 ±2px」），复制按钮跟着同一档才不会成为例外。 */
+      className="tap tap-y-6 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      onClick={copy}
+      title={state === "ok" ? "已复制" : state === "fail" ? "复制失败" : "复制机器名"}
+      aria-label="复制机器名"
+    >
+      {state === "ok" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </button>
   )
 }

@@ -445,6 +445,14 @@
 .globe-atlas svg line,
 .globe-atlas svg circle { pointer-events: none; }
 .globe-atlas svg .hit { pointer-events: auto; cursor: pointer; }
+/* 键盘轮到某枚针上时（Tab）：画一圈前景色描边当焦点环 —— 命中圆半径 9，这一圈正好落在
+   针的外面、不压旁边的标签；SVG 上各家对原生 outline 的处理不一，关掉换这个。
+   用 focus-visible（不是 focus）：鼠标点击过针之后不留环。 */
+.globe-atlas svg .hit:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 1.5; }
+/* 标签那行名字也能点：点了打开它对应的机器（见 Globe.tsx 的 Pin）。命中区给足 ——
+   Chrome 里 text 的命中本来就近乎整行盒，`bounding-box` 让内容框整个可点；
+   `visiblePainted` 写在前面，给不认前者的浏览器兜底（回落到字形 + 描边）。 */
+.globe-atlas svg .globe-label { pointer-events: visiblePainted; pointer-events: bounding-box; cursor: pointer; }
 
 .globe-ocean { fill: var(--globe-ocean); }
 .globe-land { fill: var(--globe-land); stroke: none; stroke-linejoin: round; stroke-linecap: round; }
@@ -599,8 +607,22 @@
       再挤一枚叉就成了「两枚图标叠在一起」。展开／收起的动效由 `transition-all` 负责。 */
 .search-input::-webkit-search-cancel-button,
 .search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
-.search-field .search-clear { display: none; }
+/* ★ position: absolute 必须写在这里（而不是只写在组件的类名里）：组件类名里的 `absolute`
+   是 Tailwind 的分层工具类，而 `.tap` 的 `position: relative`（本文件、未分层）在级联顺序上
+   压过它 —— 按钮于是落回 flex 流、被满宽的 input 顶到容器右缘之外（2026-10-12 站长实拍：
+   清空按钮右沿超出输入框 16px，看起来贴在边框外/角上）。未分层对未分层按特异性裁决：
+   `.search-field .search-clear`（0,2,0）> `.tap`（0,1,0) ✓。垂直居中交给容器的
+   `align-items: center` 对绝对定位子元素的 static position（挺标准的做法，Chrome/Safari/FF 都按规范实现）。 */
+.search-field .search-clear { display: none; position: absolute; }
 .search-field:focus-within .search-clear { display: grid; }
+
+/* 预算卡那两枚明细浮层（「各节点月摊 / 各节点剩余价值」，src/components/Summary.tsx）。
+   服务器一多、可计的能到近百台 —— 不限高的话浮层会长出屏幕（demo 站 87 台实测）。
+   限高 min(24rem, 60vh)：桌面大约放十几行，手机跟随视口；超高就在浮层里滚，
+   overscroll-contain 防滚到头把页面也带着跑；细滚动条不抢视觉。
+   浮层紧贴块底（没有 margin gap）是配合悬停的：指针从块移进浮层的整条路上都还在 Block 里，
+   不会触发 pointerleave 把浮层关掉（原来的 6px mt 就会——桌面鼠标根本摸不进浮层）。 */
+.budget-detail { max-height: min(24rem, 60vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 
 /* 触屏命中区：**外观一点不动，只把可点范围往外撑**。
    手指比鼠标粗 —— Apple 的通行线是 44×44，WCAG 2.2 的硬线（2.5.8）是 24×24。

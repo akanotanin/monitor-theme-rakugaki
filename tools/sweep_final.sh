@@ -9,9 +9,12 @@ for t in verify_globe_colors verify_globe_coverage verify_globe_land verify_glob
          verify_latency_range verify_peek_latency verify_detail_preload \
          verify_public_remark verify_card_style_menu verify_card_styles \
          verify_compact_notes verify_globe_layout verify_summary verify_globe \
-         verify_globe_scale verify_offline_time verify_visibility; do
-  line=$(node "tools/$t.mjs" 2>&1 | grep -E "[0-9]+ PASS / [0-9]+ FAIL|[0-9]+ 条通过|PASS [0-9]+ / FAIL [0-9]+|全部通过" | tail -1)
+         verify_globe_scale verify_offline_time verify_visibility \
+         verify_region_names verify_hub141; do
+  line=$(node "tools/$t.mjs" 2>&1 | grep -E "[0-9]+ PASS / [0-9]+ FAIL|ALL PASS|[0-9]+ 条通过|[0-9]+ 个视角通过|PASS [0-9]+ / FAIL [0-9]+|全部通过|FAIL [0-9]+ 条" | tail -1)
   printf "%-26s %s\n" "$t" "${line:-（没抓到结果行，得单独看）}" | tee -a "$OUT"
   sleep 2
 done
+# 注：verify_latency_range / verify_detail_preload 需要活的站点（本机隧道 / 上游 hub）与各自参数，
+#     裸跑必然「没抓到结果行」——跑真机时单独指定（用法见各工具头部；或经 shot_local.mjs --run）。
 echo "===== 跑完 =====" >> "$OUT"

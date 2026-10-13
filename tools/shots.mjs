@@ -5,7 +5,7 @@
 //   node tools/shots.mjs https://<你的站点> shots/live
 //
 // 拍什么：桌面亮/暗的列表页、节点详情页、延迟页，以及手机（390×844）的列表页与详情页。
-// 报什么：国旗、养鸡场入口、站标这些「只有本主题才有」的元素在不在，以及控制台报错。
+// 报什么：国旗、农场入口、站标这些「只有本主题才有」的元素在不在，以及控制台报错。
 //
 // 为什么不用 headless 的默认主题：暗色是 CSS 的 prefers-color-scheme 或 localStorage，
 // 在 CDP 里用 Emulation.setEmulatedMedia 直接给，省得去点那颗月亮按钮。
@@ -101,10 +101,12 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: shot.dark ? 'dark' : 'light' }] })
   await send('Page.navigate', { url: BASE + '/' })
   // 等卡片与数字滚动动画落定：数字还在变的时候截图会拍到乱码。
-  for (let i = 0; i < 60; i++) { await sleep(400); if (await evalJS(`document.querySelectorAll('[role=button]').length > 0`)) break }
+  // ★2026-10-12：选择器限定到卡片 —— 宽口径的 [role=button] 现在还会捞到地球的针（SVG）
+  //   与概览的「月度预算」块，点 [0] 会点到它们身上、进不了详情。
+  for (let i = 0; i < 60; i++) { await sleep(400); if (await evalJS(`document.querySelectorAll('[data-card-style] [data-slot="card"][role="button"]').length > 0`)) break }
   await sleep(2500)
   if (shot.open) {
-    await evalJS(`document.querySelectorAll('[role=button]')[0]?.click()`)
+    await evalJS(`document.querySelectorAll('[data-card-style] [data-slot="card"][role="button"]')[0]?.click()`)
     await sleep(1200)
     if (shot.open === 'latency') {
       await evalJS(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '网络延迟')?.click()`)
@@ -142,8 +144,8 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
     dark: document.documentElement.classList.contains('dark'),
     flags: document.querySelectorAll('img[src^="/flags/"]').length,
     flagSrc: [...document.querySelectorAll('img[src^="/flags/"]')].slice(0, 3).map((i) => i.getAttribute('src')),
-    farmEntry: !!document.querySelector('a[title="养鸡场"]'),
-    farmHref: document.querySelector('a[title="养鸡场"]')?.getAttribute('href') || '(没有)',
+    farmEntry: !!document.querySelector('a[title="农场入口"]'),
+    farmHref: document.querySelector('a[title="农场入口"]')?.getAttribute('href') || '(没有)',
     // 站标地址是主题设置项，可能被站长换掉；顺带报它有没有真的加载出来
     // （naturalWidth=0 就是取不到、已经退回默认或者空白）。
     siteIcon: document.querySelector('header img')?.getAttribute('src') || '(没有)',

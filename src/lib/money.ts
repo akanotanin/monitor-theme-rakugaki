@@ -43,15 +43,29 @@ export function cycleDaysOf(cycle: string): number {
 }
 
 /**
- * 固定汇率：1 单位该币种 = N 人民币。
+ * 内置汇率（兜底表）：1 单位该币种 = N 人民币。
  *
- * 主题是一个离线的静态包，访客的浏览器里不会（也不该）去查实时汇率，所以这里写死一份，
- * 只用来把站长填的各币种账折成同一把尺子求合计——卡片上的数字因此是「≈」。改这张表
- * 就够了，别处不用动（`FX_DATE` 只是给悬停提示用来自报取价日期）。
+ * 把站长填的各币种账折成同一把尺子求合计——卡片上的数字因此是「≈」。平时这份表只在
+ * 两种情况下上场：①页面刚打开、每日汇率（见 lib/fx.ts）还在路上；②拉不到每日汇率
+ * （访客网络够不着、源挂了）时的兜底。fxNote 会自报用的是「每日更新的汇率」还是
+ * 「固定汇率」，两种口径在悬停提示里都能看见。
  *
  * 取值：2026-09-30 的公开汇率参考价，四舍五入到四位小数。
  */
 export const FX_DATE = "2026-09-30"
+
+/** 币种 → 人民币的映射（折算是逐币种乘，不是矩阵）。 */
+export type FxRates = Record<string, number>
+
+/** 一份汇率快照：币种→人民币 + 取价日期 + 来源（每日拉的 / 内置表）。 */
+export type FxSnapshot = {
+  /** 币种 → 人民币（1 单位该币种 = N 人民币；CNY 恒为 1）。 */
+  rates: FxRates
+  /** 取价日期 YYYY-MM-DD（口径文案里自报）。 */
+  date: string
+  /** true = 每日汇率（lib/fx.ts 拉的）；false = 内置表。 */
+  live: boolean
+}
 
 export const FX_CNY: Record<string, number> = {
   CNY: 1,
@@ -67,6 +81,9 @@ export const FX_CNY: Record<string, number> = {
   RUB: 0.0795,
 }
 
+/** 内置表打好的快照（budgetOf / fxNote 的默认参数；每日汇率拉不到时的兜底）。 */
+export const FX_BUILTIN: FxSnapshot = { rates: FX_CNY, date: FX_DATE, live: false }
+
 export type Budget = {
   /** 折成人民币的每月合计；一台可计的都没有时 null（卡片显示「—」而不是 ¥0.00）。 */
   monthly: number | null
@@ -80,22 +97,44 @@ export type Budget = {
   used: string[]
   /** 填了价格、但汇率表里没有的那种币种（那台机器因此没计入，提示里会说明）。 */
   skipped: string[]
+  /**
+   * 逐台的**月摊**明细（金额降序、同额保持原顺序）—— 「月度预算」那块读数悬停时弹出的浮层
+   * 用它回答「合起来这些钱，是哪几台摊出来的」。口径与 `monthly` 完全同一份：一次性买断、
+   * 没填价格、汇率表里没有的机器都不在这里出现（所以 `monthlyItems.length === monthlyCount`）。
+   */
+  monthlyItems: BudgetItem[]
+  /**
+   * 逐台的**剩余价值**明细（金额降序、同额保持原顺序）—— 「剩余价值」那块的浮层用它。
+   * 口径与 `remaining` 同一份：无到期日、一次性买断、已经过期的机器都不在这里出现
+   * （所以 `remainingItems.length === remainingCount`）。
+   */
+  remainingItems: BudgetItem[]
 }
 
-export function budgetOf(nodes: Node[]): Budget {
+/** 逐台明细里的一条（月摊与剩余价值共用；`amount` 都是折算后的人民币金额）。 */
+export type BudgetItem = {
+  /** 机器名（原样显示；浮层里过长由 CSS 截断）。 */
+  name: string
+  /** 折成人民币的金额：月摊版是「每月多少」，剩余价值版是「还剩多少」。 */
+  amount: number
+}
+
+export function budgetOf(nodes: Node[], fx: FxSnapshot = FX_BUILTIN): Budget {
   let monthly = 0
   let remaining = 0
   let monthlyCount = 0
   let remainingCount = 0
   const used = new Set<string>()
   const skipped = new Set<string>()
+  const monthlyItems: BudgetItem[] = []
+  const remainingItems: BudgetItem[] = []
 
   for (const node of nodes) {
     // 没填价格（0 / 空）＝这台不计账，不是「花 0 元」。
     if (!(node.price > 0)) continue
     const currency = (node.currency || "").toUpperCase()
-    const fx = FX_CNY[currency]
-    if (fx === undefined) {
+    const rate = fx.rates[currency]
+    if (rate === undefined) {
       skipped.add(currency || "（空）")
       continue
     }
@@ -103,8 +142,10 @@ export function budgetOf(nodes: Node[]): Budget {
     const months = cycleMonthsOf(node.billing_cycle)
     const days = cycleDaysOf(node.billing_cycle)
     if (months > 0) {
-      monthly += (node.price * fx) / months
+      const per = (node.price * rate) / months
+      monthly += per
       monthlyCount++
+      monthlyItems.push({ name: node.name, amount: per })
     }
     if (days <= 0) continue
     // `expires_in` 是数字（含 0、负数）就用它；null / 缺字段才按 `expires_at` 自己数。
@@ -112,8 +153,10 @@ export function budgetOf(nodes: Node[]): Budget {
     if (typeof left === "number" && left > 0) {
       // 剩余天数超过一个周期（顺延、或站长填了个很远的日期）时按整期封顶：
       // 剩余价值不可能比这台机器买价还贵。
-      remaining += node.price * fx * (Math.min(left, days) / days)
+      const worth = node.price * rate * (Math.min(left, days) / days)
+      remaining += worth
       remainingCount++
+      remainingItems.push({ name: node.name, amount: worth })
     }
   }
 
@@ -124,6 +167,10 @@ export function budgetOf(nodes: Node[]): Budget {
     remainingCount,
     used: [...used].sort(),
     skipped: [...skipped].sort(),
+    // 降序（贵的在前）——「钱花在哪台上了」是这枚浮层要回答的第一个问题；
+    // 同金额的保持节点原顺序（sort 在 ES2019+ 是稳定的）。
+    monthlyItems: monthlyItems.sort((a, b) => b.amount - a.amount),
+    remainingItems: remainingItems.sort((a, b) => b.amount - a.amount),
   }
 }
 
@@ -135,14 +182,17 @@ export function cny(amount: number): string {
   return `¥${amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-/** 提示里那句汇率说明。只列真的用到的币种（人民币自身不必写「1 CNY = ¥1」）。 */
-export function fxNote(used: string[], skipped: string[] = []): string {
+/**
+ * 提示里那句汇率说明。只列真的用到的币种（人民币自身不必写「1 CNY = ¥1」）。
+ * `fx` 决定前缀措辞与取价日期：每日汇率（lib/fx.ts 拉的）写「按每日更新的汇率折算」，
+ * 内置表写「按固定汇率折算」——文案与数字同源，不许说岔。
+ */
+export function fxNote(used: string[], skipped: string[] = [], fx: FxSnapshot = FX_BUILTIN): string {
   const rates = used
     .filter((code) => code !== "CNY")
-    .map((code) => `1 ${code} = ¥${trimRate(FX_CNY[code])}`)
-  const head = rates.length
-    ? `按固定汇率折算（${rates.join("，")}，${FX_DATE}）`
-    : "按固定汇率折算成人民币"
+    .map((code) => `1 ${code} = ¥${trimRate(fx.rates[code])}`)
+  const kind = fx.live ? "按每日更新的汇率折算" : "按固定汇率折算"
+  const head = rates.length ? `${kind}（${rates.join("，")}，${fx.date}）` : `${kind}成人民币`
   const miss = skipped.length ? `；${skipped.join("、")} 没有汇率，未计入` : ""
   return head + miss
 }

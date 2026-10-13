@@ -214,7 +214,6 @@ await sleep(5800)
 const afterB = await stats()
 check('★ 隐藏期间轮询真的停了（跨过一个 5 秒周期计数不涨）', afterB.nodesHits === snapB.nodesHits, `${snapB.nodesHits} → ${afterB.nodesHits}`)
 check('★ 隐藏期间连 WS 重试都不发', afterB.wsAttempts === snapB.wsAttempts, `attempts ${snapB.wsAttempts} → ${afterB.wsAttempts}`)
-
 await js(`window.__setVis('visible')`)
 const backB = await waitStats((s) => s.nodesHits >= snapB.nodesHits + 1, 2500)
 check('★ 回前台补一次（轮询不可用时的「立刻拉一下」）', backB.nodesHits >= snapB.nodesHits + 1, `${snapB.nodesHits} → ${backB.nodesHits}`)

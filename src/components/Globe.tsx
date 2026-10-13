@@ -8,8 +8,9 @@ import { COARSE_WORLD_OUTLINES, WORLD_OUTLINES } from "@/lib/world"
 import type { Node } from "@/lib/api"
 
 /**
- * 列表页顶部的「节点地球」：正射投影的一颗地球，每台机器一枚针、一条引线连到左右两摞
- * 标签上，旁边一条一条列着地区。整套是从上游复刻过来的，几何与排布在 `@/lib/globe` 里（那里的注释写了逐点比对的办法）。
+ * 列表页顶部的「节点地球」：正射投影的一颗地球，小队每台一枚针、大机群一个地区一枚针，
+ * 一条引线连到左右两摞标签上，旁边一条一条列着地区。整套是从上游复刻过来的，
+ * 几何与排布在 `@/lib/globe` 里（那里的注释写了逐点比对的办法）。
  *
  * 这一层只管四件事：**什么时候重画**、**指针怎么转它**、**点哪里开哪台机器**、
  * **地区侧栏怎么筛**。数据（节点 → 针的落点）只在节点列表变了时算一次。
@@ -229,10 +230,9 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
   const canvas = useMemo(() => {
     const plain = { pad: 0, room: Number.POSITIVE_INFINITY, viewBox: `0 0 ${VIEW.w} ${VIEW.h}` }
     if (!box || !points.length) return plain
-    const ink = Math.max(0, ...points.map((p) => Math.max(
-      inkWidthWith(measured, `${p.name} · ${p.code}`),
-      inkWidthWith(measured, `${p.code} · ${p.name}`),
-    )))
+    const ink = Math.max(0, ...points.map((p) => (p.bare
+      ? inkWidthWith(measured, p.display)
+      : Math.max(inkWidthWith(measured, `${p.display} · ${p.code}`), inkWidthWith(measured, `${p.code} · ${p.display}`)))))
     const scale = Math.min(box.w / VIEW.w, box.h / VIEW.h)
     // 一侧还剩多少余量（用户单位）：宽屏是"容器比画布宽"留下的空白，窄屏约等于 0。
     const room = (box.w / scale - VIEW.w) / 2
@@ -286,9 +286,11 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
         onPointerUp={(e) => endDrag(e, true)}
         onPointerCancel={(e) => endDrag(e, false)}
       >
-        {/* 地球是下面那张列表的另一种画法，不是唯一的入口：对读屏隐藏，免得 26 枚针
-            变成 26 个无名可点项。地区侧栏那几个是真按钮，留着。 */}
-        <svg viewBox={canvas.viewBox} preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
+        {/* 地球是下面那张列表的另一种画法，不是唯一的入口。但从 2026-10-12 起它**键盘可达**：
+            每一枚针的命中圆都是一枚真焦点（tabIndex + role=button + aria-label），Tab 走到
+            哪枚、Enter/Space 就打开那台机器 —— 所以不再对整个 svg 说 aria-hidden，
+            改为只把纯绘制件（标签文字、台数角标）标掉，语义全部落在针上。 */}
+        <svg viewBox={canvas.viewBox} preserveAspectRatio="xMidYMid meet" role="group" aria-label="节点地球">
           <defs>
             {/* 圆盘里那层明暗：中心几乎透明、边上压到 `--globe-rim`（上游同一套停点）。 */}
             <radialGradient id="globe-shade" cx="38%" cy="36%" r="68%">
@@ -315,7 +317,7 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
             <path key={i} className="globe-link" d={arc.d} />
           ))}
           {placed.map((p) => (
-            <Pin key={p.key} p={p} />
+            <Pin key={p.key} p={p} onOpen={onOpen} onWarm={onWarm} />
           ))}
           {marker && (
             <g className="globe-selected">
@@ -376,12 +378,21 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
  *
  * 大机群时被行数上限省掉的行（见 globe.ts 的 MAX_LABEL_ROWS）只画针 —— 引线与标签
  * 都不画，针边上的台数角标照留：那一行字没了，但这枚针是哪里、有几台仍然读得出来。
+ *
+ * 命中圆同时是**键盘入口**（2026-10-12 的创意项）：tabIndex=0 + role=button + aria-label，
+ * Tab 能停在上面、Enter/Space 打开（与鼠标点击同一落点）；聚焦或指针扫过先预热详情 chunk
+ * （onWarm，与卡片「摸到就预热」同一套）。焦点圈画在 index.css 的 `.hit:focus-visible`。
+ * 标签文字与台数角标标 aria-hidden：它们与命中圆的 aria-label 是同一份信息，别播两遍。
  */
-function Pin({ p }: { p: Placed }) {
+function Pin({ p, onOpen, onWarm }: { p: Placed; onOpen: (id: number) => void; onWarm: () => void }) {
   const cx = p.px.toFixed(1)
   const cy = p.py.toFixed(1)
   return (
     <g>
+      {/* 悬停提示挂在**整组**上：悬到针、引线、标签哪儿都显示（文案只留这一份）。
+          ★ 别挂进 <text> 里面 —— SVG 的 textContent 会把 <title> 的文本也串进来，
+          按文本匹配标签的断言（「截成省略号」那类）会当场假红。 */}
+      <title>{p.count > 1 ? `${p.region.label}：${p.count} 台（打开其中第一台）` : `打开 ${p.name}`}</title>
       {!p.hidden && (
         <path className="globe-stem" d={`M ${cx} ${cy} L ${p.lx.toFixed(1)} ${p.ly.toFixed(1)}`} />
       )}
@@ -389,18 +400,40 @@ function Pin({ p }: { p: Placed }) {
       {/* 多台地区：针边上挂一个小小的台数（标签里也写着「地区 ×N」，两处都在，
           因为标签可能被挤掉、针本身也常常落在标签的另一头）。 */}
       {p.count > 1 && (
-        <text className="globe-count" x={p.px + 4.5} y={p.py - 3.5}>
+        <text className="globe-count" x={p.px + 4.5} y={p.py - 3.5} aria-hidden="true">
           {p.count}
         </text>
       )}
       {!p.hidden && (
-        <text className="globe-label" x={p.lx + (p.end ? -3 : 3)} y={p.ly + 3} textAnchor={p.end ? "end" : "start"}>
+        /* 这行名字本身也能点：点了打开它对应的那台机器（多台地区 = 打开其中第一台）。
+           与命中圆共用一个事件路径 —— pointerdown 那一刻用 closest('[data-node]') 认下它是谁。 */
+        <text className="globe-label" x={p.lx + (p.end ? -3 : 3)} y={p.ly + 3} textAnchor={p.end ? "end" : "start"} data-node={p.id} aria-hidden="true">
           {p.label}
         </text>
       )}
-      <circle className="hit" cx={cx} cy={cy} r={9} fill="transparent" data-node={p.id} data-index={p.index} data-region={p.region.key} data-online={p.online ? "1" : "0"} data-count={p.count}>
-        <title>{p.count > 1 ? `${p.region.label}：${p.count} 台（打开其中第一台）` : `打开 ${p.name}`}</title>
-      </circle>
+      <circle
+        className="hit"
+        cx={cx}
+        cy={cy}
+        r={9}
+        fill="transparent"
+        data-node={p.id}
+        data-index={p.index}
+        data-region={p.region.key}
+        data-online={p.online ? "1" : "0"}
+        data-count={p.count}
+        tabIndex={0}
+        role="button"
+        aria-label={p.count > 1 ? `${p.region.label}：${p.count} 台，打开其中第一台` : `打开 ${p.name}`}
+        onFocus={onWarm}
+        onPointerOver={onWarm}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onOpen(p.id)
+          }
+        }}
+      />
     </g>
   )
 }
@@ -430,7 +463,12 @@ function subscribe(query: MediaQueryList, notify: () => void) {
   return () => query.removeEventListener("change", notify)
 }
 
-/** 窄屏（≤720px）走 low 档。与上游不同的是：上游在这个宽度上干脆不画地球。 */
+/**
+ * 窄屏（≤720px）。★ 现在这个宽度**不再降档**（2026-10-07 站长看过手机上 low 档的效果、
+ * 说「地球太简陋了」之后，组件顶部的 `NARROW_LOW_TIER` 已经改成 false）——这个钩子现在
+ * 只用来在 quality 那一行表达「窄屏本来可以降档」：开关保持可读、回退是一行改回 true，
+ * 免得后人以为那里漏了判断。上游在这个宽度上干脆不画地球；本主题照画，只是不为省电降档。
+ */
 function useNarrow(): boolean {
   return useSyncExternalStore((notify) => subscribe(NARROW, notify), () => NARROW.matches)
 }

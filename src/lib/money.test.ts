@@ -37,7 +37,7 @@ eq([cycleMonthsOf("once"), cycleMonthsOf(""), cycleMonthsOf("weird")], [0, 1, 1]
 eq([cycleDaysOf("once"), cycleDaysOf(""), cycleDaysOf("weird")], [0, 30, 30], "同上（天数）")
 
 /* 空列表：两个数都是 null（卡片显示「—」），不是 ¥0.00。 */
-eq(budgetOf([]), { monthly: null, remaining: null, monthlyCount: 0, remainingCount: 0, used: [], skipped: [] }, "空列表")
+eq(budgetOf([]), { monthly: null, remaining: null, monthlyCount: 0, remainingCount: 0, used: [], skipped: [], monthlyItems: [], remainingItems: [] }, "空列表")
 
 /* 月付人民币：月度预算就是价格本身；剩余价值按剩余天数折。 */
 const monthly = budgetOf([node({ price: 8.79, currency: "CNY", billing_cycle: "monthly", expires_in: 25 })])
@@ -111,6 +111,45 @@ eq(cny(0), "¥0.00", "零也写两位小数")
 eq(fxNote(["CNY"]), "按固定汇率折算成人民币", "只用人民币时不列汇率")
 eq(fxNote(["CNY", "USD"]), `按固定汇率折算（1 USD = ¥${FX_CNY.USD}，2026-09-30）`, "列用到的汇率与取价日期")
 eq(fxNote(["CNY"], ["XYZ"]), "按固定汇率折算成人民币；XYZ 没有汇率，未计入", "没有汇率的币种要点名")
+
+/* 逐台明细（「月度预算」悬停浮层）：与 monthly 完全同一份口径 —— 计入规则一样、
+   金额降序（同额保持原顺序）、条数与 monthlyCount 一致。 */
+const detail = budgetOf([
+  node({ name: "便宜", price: 5, currency: "USD", billing_cycle: "monthly", expires_in: 10 }),
+  node({ name: "免费", price: 0, currency: "USD", billing_cycle: "monthly" }),
+  node({ name: "最贵", price: 120, currency: "USD", billing_cycle: "yearly", expires_in: 10 }),
+  node({ name: "买断", price: 300, currency: "CNY", billing_cycle: "once", expires_in: 100 }),
+])
+eq(detail.monthlyItems.map((i) => i.name), ["最贵", "便宜"], "明细只含可计机器、按金额降序")
+eq(round(detail.monthlyItems[0].amount), round((120 * FX_CNY.USD) / 12), "明细金额 = 年付折到月")
+eq(detail.monthlyItems.length, detail.monthlyCount, "明细条数与「N 台计费」一致")
+
+const tie = budgetOf([
+  node({ name: "先", price: 10, currency: "CNY", billing_cycle: "monthly" }),
+  node({ name: "后", price: 10, currency: "CNY", billing_cycle: "monthly" }),
+])
+eq(tie.monthlyItems.map((i) => i.name), ["先", "后"], "同金额时保持节点原顺序（排序稳定）")
+
+/* 逐台剩余价值明细（「剩余价值」悬停浮层，2026-10-12）：与 remaining 同一份口径 ——
+   只含有剩余天数的机器、金额降序、封顶规则一致、条数与 remainingCount 一致。 */
+const worth = budgetOf([
+  node({ name: "年付", price: 100, currency: "CNY", billing_cycle: "yearly", expires_in: 500 }),
+  node({ name: "月付", price: 30, currency: "CNY", billing_cycle: "monthly", expires_in: 15 }),
+  node({ name: "无期", price: 10, currency: "CNY", billing_cycle: "monthly", expires_in: null }),
+  node({ name: "过期", price: 10, currency: "CNY", billing_cycle: "monthly", expires_in: -3 }),
+])
+eq(worth.remainingItems.map((i) => i.name), ["年付", "月付"], "剩余价值明细只含未到期机器、按金额降序")
+eq(round(worth.remainingItems[0].amount), 100, "封顶规则与合计同一份（剩 500 天 → 整价封顶）")
+eq(worth.remainingItems.length, worth.remainingCount, "明细条数与「N 台未到期」一致")
+eq(round(worth.remaining), round(100 + 15), "明细与合计同源：加起来就是合计那个数")
+
+/* 每日汇率（2026-10-12）：budgetOf / fxNote 接受注入的快照 —— 数字按新汇率、文案自报来源。 */
+const liveSnap = { rates: { ...FX_CNY, USD: 7.1, EUR: 7.5 }, date: "2026-10-11", live: true }
+const live = budgetOf([node({ price: 12, currency: "USD", billing_cycle: "monthly", expires_in: 10 })], liveSnap)
+eq(round(live.monthly), round(12 * 7.1), "注入每日汇率：月摊按新值折算（不是内置表的数）")
+eq(fxNote(["USD"], [], liveSnap), "按每日更新的汇率折算（1 USD = ¥7.1，2026-10-11）", "每日汇率文案自报来源与日期")
+eq(fxNote(["CNY"], [], liveSnap), "按每日更新的汇率折算成人民币", "每日汇率：只用人民币时的简版")
+eq(fxNote(["USD"]), `按固定汇率折算（1 USD = ¥${FX_CNY.USD}，2026-09-30）`, "不注入时仍是内置表口径（默认参数）")
 
 if (failed) {
   console.error(`\n${failed} 处不符`)

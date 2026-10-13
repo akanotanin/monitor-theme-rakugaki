@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef, type ComponentType, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react"
 import { Activity, ArrowDown, ArrowDownUp, ArrowUp, Gauge, PiggyBank, Server, Wallet } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
 import { speedHistory, type Node } from "@/lib/api"
 import { bytes, rate } from "@/lib/format"
-import { budgetOf, cny, fxNote } from "@/lib/money"
+import { useFx } from "@/lib/fx"
+import { budgetOf, cny, fxNote, type BudgetItem } from "@/lib/money"
 import { summarize, type Fleet } from "@/lib/summary"
 
 /**
@@ -40,16 +41,50 @@ import { summarize, type Fleet } from "@/lib/summary"
  *
  * 卡片是 flex、块是 flex-col，所以块里的 `mt-auto` 能把底部那行压到同排最高的那块的下沿，
  * 内容行数不同也对齐（例如「无在线节点」与「1 台离线」落在同一条基线上）。
+ *
+ * `detail` 给了它，整块就成了一枚可悬停/点开的热点（2026-10-12 的创意项）：鼠标悬停（或
+ * 触屏点一下）弹出一枚浮层，把这个数的分解摊开（如「月度预算」的逐台明细）。开合规则：
+ * 鼠标 pointerenter 即开、leave 即关；触屏/笔点一下开，点别处或 Esc 关；键盘 Tab 到它开、
+ * blur 关。原来的 hint（原生 title）在这条路径上让位给了浮层尾巴里的同一段说明 ——
+ * 两套悬停提示叠在一起会打架，而信息一字不少。
  */
-function Block({ icon: Icon, title, hint, children }: {
+function Block({ icon: Icon, title, hint, detail, children }: {
   icon: ComponentType<{ className?: string }>
   title: string
   /** 悬停提示：口径说明——月度预算与剩余价值那两个数不是一眼能看懂的，得写清楚。 */
   hint?: string
+  /** 给了它可悬停/点开：弹出的浮层内容（口径行由调用方放在 detail 尾巴里）。 */
+  detail?: ReactNode
   children: ReactNode
 }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null)
+  // 开着的浮层：点别处 / Esc 收起（与 NodeCard 那枚浮层同一个做法）。
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      const el = e.target
+      if (!(el instanceof HTMLElement) || !ref.current?.contains(el)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false) }
+    document.addEventListener("pointerdown", onDown)
+    document.addEventListener("keydown", onKey)
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey) }
+  }, [open])
   return (
-    <div className="flex min-w-0 flex-col" title={hint}>
+    <div
+      ref={ref}
+      className={`relative flex min-w-0 flex-col ${detail !== undefined ? "rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" : ""}`}
+      title={detail ? undefined : hint}
+      tabIndex={detail ? 0 : undefined}
+      role={detail ? "button" : undefined}
+      aria-expanded={detail ? open : undefined}
+      onPointerEnter={detail ? (e) => { if (e.pointerType === "mouse") setOpen(true) } : undefined}
+      onPointerLeave={detail ? (e) => { if (e.pointerType === "mouse") setOpen(false) } : undefined}
+      onFocus={detail ? () => setOpen(true) : undefined}
+      onBlur={detail ? () => setOpen(false) : undefined}
+      onClick={detail ? () => setOpen(true) : undefined}
+    >
       {/* 手写小注：卡片标题用 Caveat（汉字落到系统楷体），像随手写在纸角上的一行字。
           读数与单位不跟它走——那两样是等宽的小票字。 */}
       <div className="sk-hand flex items-center gap-1.5 text-[15px] leading-none">
@@ -57,7 +92,36 @@ function Block({ icon: Icon, title, hint, children }: {
         {title}
       </div>
       {children}
+      {detail !== undefined && open && (
+        // data-budget-detail：护栏认「浮层开没开、内容对不对」的锚点（与 data-latency 同一套做法）。
+        // ★2026-10-12 两处讲究（服务器多了以后浮层会长到几十行）：
+        //   ① 去掉了原来的 mt-1.5 —— 那段 6px 空隙会让「指针从块下移到浮层」的路上触发
+        //      pointerleave，桌面鼠标一往下浮层就闪关（根本摸不进浮层、也滚不动）。现在浮层紧贴
+        //      块底，指针全程留在 Block 子树里，悬停不断；视觉上的缓冲由浮层自己的内边距兜着。
+        //   ② 上限高 + 内部滚动写在 index.css 的 .budget-detail 里：min(24rem, 60vh) —— 近百行
+        //      明细也在这一个浮层里滚着看，不会把浮层拖出屏幕。
+        <span data-budget-detail="" className="budget-detail absolute left-0 top-full z-20 block w-max max-w-[15rem] space-y-1 rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md">
+          {detail}
+        </span>
+      )}
     </div>
+  )
+}
+
+/** 预算卡两枚浮层的内容：逐台明细（金额降序，与 budgetOf 的明细同序）+ 口径行。 */
+function BudgetDetail({ head, items, note }: { head: string; items: BudgetItem[]; note: string }) {
+  return (
+    <>
+      {/* 表头带上条数（「各节点月摊 · 87 台」）：浮层能滚了之后，第一眼就知道一共有多少台。 */}
+      <span className="block text-muted-foreground">{head} · {items.length} 台</span>
+      {items.map((item, i) => (
+        <span key={i} data-budget-row="" className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate">{item.name}</span>
+          <span className="tnum shrink-0">≈{cny(item.amount)}</span>
+        </span>
+      ))}
+      <span className="block border-t pt-1 text-muted-foreground">{note}</span>
+    </>
   )
 }
 
@@ -226,27 +290,36 @@ function BusiestBlock({ fleet }: { fleet: Fleet }) {
 
 export function SummaryCards({ nodes, group, finance = false, searching = false }: { nodes: Node[]; group: string | null; finance?: boolean; searching?: boolean }) {
   const fleet = summarize(nodes)
-  const budget = budgetOf(nodes)
+  // 每日汇率（lib/fx.ts）：新鲜缓存 ∪ 内置表起步，拉到新的在后台无缝换上——只调一次，
+  // 两个数（budget 与 note）共用同一份快照，文案与数字不许说岔。
+  const fx = useFx()
+  const budget = budgetOf(nodes, fx)
   // 模块级的采样缓冲：`useNodes` 每次收到推送（或轮询回来）就追加一个点，
   // 所以这里读到的是「打开页面到现在」的速率。**按分组取**（`group` = 当前选中的那一档，
   // null = 全部）：同一个缓冲里每个分组各有一条线（api.ts 的 sample），拿全站那条线画在
   // 分组标签下面，会出现「读数是这一组的、走势线是全站的」这种对不上的画面。
   const series = speedHistory.get(group) ?? []
   // 折算说明：只列真的用到过的币种——各站的账混着 USD / EUR / CNY 记，合起来必须说明口径。
-  const note = fxNote(budget.used, budget.skipped)
+  const note = fxNote(budget.used, budget.skipped, fx)
+  // 「月度预算」与「剩余价值」两段口径文字：没有浮层时它们是原生 title；有浮层时挪进浮层尾巴
+  // （两处同一份，别让口径说岔了）。
+  const monthlyNote = `各节点的价格按计费周期摊到每个月后相加；一次性买断与没填价格的不计入。${note}`
+  const remainingNote = `已经付掉、还没用掉的那一段：价格 × 剩余天数 ÷ 周期天数；无到期日与一次性买断的不计入。${note}`
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {finance ? (
         <>
           {/* 第一张卡：月度预算 + 剩余价值。两个数都是把各站的账按固定汇率折成人民币后相加，
-              所以写「≈」；口径与汇率清单放在悬停提示里（见 lib/money.ts）。 */}
+              所以写「≈」；口径与汇率清单放在悬停提示里（见 lib/money.ts）。
+              两块都挂了浮层（detail，2026-10-12）：月度预算摊出「各节点月摊」、剩余价值摊出
+              「各节点剩余价值」——各有可计的机器才挂（明细为空时保持原生的 title 提示那副面孔）。 */}
           <Pair>
-            <Block icon={Wallet} title="月度预算" hint={`各节点的价格按计费周期摊到每个月后相加；一次性买断与没填价格的不计入。${note}`}>
+            <Block icon={Wallet} title="月度预算" hint={monthlyNote} detail={budget.monthlyItems.length > 0 ? <BudgetDetail head="各节点月摊" items={budget.monthlyItems} note={monthlyNote} /> : undefined}>
               <Big>{budget.monthly === null ? "—" : `≈${cny(budget.monthly)}`}</Big>
               <Foot>{budget.monthlyCount ? `${budget.monthlyCount} 台计费` : "未记录价格"}</Foot>
             </Block>
-            <Block icon={PiggyBank} title="剩余价值" hint={`已经付掉、还没用掉的那一段：价格 × 剩余天数 ÷ 周期天数；无到期日与一次性买断的不计入。${note}`}>
+            <Block icon={PiggyBank} title="剩余价值" hint={remainingNote} detail={budget.remainingItems.length > 0 ? <BudgetDetail head="各节点剩余价值" items={budget.remainingItems} note={remainingNote} /> : undefined}>
               <Big>{budget.remaining === null ? "—" : `≈${cny(budget.remaining)}`}</Big>
               <Foot>{budget.remainingCount ? `${budget.remainingCount} 台未到期` : "无预付到期"}</Foot>
             </Block>

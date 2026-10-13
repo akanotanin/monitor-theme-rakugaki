@@ -247,9 +247,12 @@ check('窄屏那行输入框：命中区高度 ≥44（那圈挂在框外面的 
 
 console.log('\n二、详情页（量程 / 分段按钮）:')
 let d = await open('/node/1', 390, 844)
-// ★本皮肤的分段按钮带 1.5px 墨线边框，盒高是 27 而不是 24 —— 按 tap-y-6 这个命中区类认它们，
-//   外观值（27）也照本皮肤钉住。
-const seg = d.main.filter((c) => (c.cls || '').includes('tap-y-6'))
+// ★本皮肤的分段按钮带 1.5px 墨线边框，盒高是 26（不是 jikasei 的 24）—— 按 tap-y-6 命中区类
+//   认它们，外观值也照本皮肤钉住。
+// ★2026-10-13：标题行里那枚「复制机器名」（随 jikasei 1.27.0 同步进来）也带 tap-y-6，
+//   但它是 24×24 的图标钮（与详情页图标一族同尺寸），不属于「分段按钮」这组 —— 再按
+//   sk-chip 限定一次；不同它会让这条断言拿 24 去比 26（假红、且指向错误的修复方向）。
+const seg = d.main.filter((c) => (c.cls || '').includes('tap-y-6') && (c.cls || '').includes('sk-chip'))
 check('详情页的分段按钮还在（量程 / 资源 / 网络延迟）', seg.length >= 2, `${seg.length} 个：${JSON.stringify(seg.map((c) => c.label))}`)
 check('外观一点没动：盒子仍是 26 高', seg.length > 0 && seg.every((c) => c.box.h === 26), JSON.stringify(seg.map((c) => c.box.h)))
 check('外观一点没动：横向没被撑开（±2px 是测量噪声）', seg.length > 0 && seg.every((c) => Math.abs(c.hit.w - c.box.w) <= 2), JSON.stringify(seg.map((c) => `${c.label} ${c.hit.w} vs ${c.box.w}`)))

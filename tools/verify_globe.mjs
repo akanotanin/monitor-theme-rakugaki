@@ -127,6 +127,9 @@ const send = (m, p = {}) => new Promise((res) => { const i = ++id; pending.set(i
 ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
 const js = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result?.result?.value
 await send('Runtime.enable'); await send('Page.enable')
+// headless 里窗口本身没有焦点：el.focus() 只改 activeElement、不派发 focus/focusin 事件 ——
+// 「聚焦在针上、Enter 打开」这套键盘交互的测试需要真事件（2026-10-12）。
+await send('Emulation.setFocusEmulationEnabled', { enabled: true })
 let errors = []
 ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.text) })
 
@@ -288,7 +291,7 @@ check('桌面是两列（地球 1.35 : 侧栏 0.65）', String(s.cols).split(' '
 check('顶栏那枚开关在、默认是按下的（默认开）', s.toggle?.pressed === 'true' && s.toggle?.w === 36 && s.toggle?.h === 36, JSON.stringify(s.toggle))
 // 顺序钉住是为了让「谁被挪走了」一眼可见。搜索那格不在这张表里 —— 它是个 <input>（收起时是
 // 一枚方形图标），不是按钮；它的位置与开合由 tools/verify_search.mjs 管。
-check('顶栏顺序：登录 → 卡片形态 → 地球 → 切换主题（没有养鸡场那枚）',
+check('顶栏顺序：登录 → 卡片形态 → 地球 → 切换主题（没有农场入口那枚）',
   JSON.stringify(s.icons) === JSON.stringify(['登录', '卡片形态', '隐藏节点地球', '切换主题']), JSON.stringify(s.icons))
 check('控制台无异常', errors.length === 0, errors.join(' | '))
 await shot('01-live-desktop.png')
@@ -345,12 +348,30 @@ check('钉住之后不再自转', (await (async () => {
 })()) === true, filtered.caption)
 await shot('02-live-region.png')
 
+// ★ 地区筛选进地址栏（2026-10-12 的创意项）：`?region=` 落进 URL —— 刷新、收藏、分享
+//   都带着这一屏；popstate 也会把它读回来（见 App 的 onPop）。
+const regUrl = String(await js('location.pathname + location.search'))
+check('★ 选了地区：地址栏带上了 region 参数', regUrl.startsWith('/?') && decodeURIComponent(regUrl).includes('region='), regUrl)
+await send('Page.reload')
+let regAfter = null
+for (let i = 0; i < 16; i++) {
+  await sleep(280)
+  try { regAfter = JSON.parse(await js(READ)) } catch { continue }
+  if (regAfter && regAfter.cards === 3 && regAfter.regs.find((r) => r.text.indexOf('Tokyo') >= 0)?.on) break
+}
+check('★ 刷新之后：地区选择原样复原（那一行仍选中、列表仍只剩 3 台）',
+  !!regAfter && regAfter.cards === 3 && regAfter.regs.find((r) => r.text.indexOf('Tokyo') >= 0)?.on === true,
+  JSON.stringify({ cards: regAfter?.cards, url: await js('location.search') }))
+
 check('再点一次同一行 = 取消筛选', await (async () => {
   await js(`(() => { const b = [...document.querySelectorAll('.globe-reg')].find((x) => x.textContent.indexOf('Tokyo') >= 0); b.click(); return true })()`)
   await sleep(500)
   const back = JSON.parse(await js(READ))
   return back.cards === 7 && back.selected === 0 && back.regs[0].on === true && back.sideTitle === '地区'
 })())
+// 取消筛选之后地址栏也回到干净（region 参数消失）。
+const regClean = String(await js('location.search'))
+check('★ 取消地区筛选：地址栏回到干净的 /（参数消失）', regClean === '', JSON.stringify(regClean))
 check('取消之后又转起来了', await (async () => {
   const a = JSON.parse(await js(READ)).caption
   await sleep(1200)
@@ -425,6 +446,130 @@ await sleep(800)
 const backList = JSON.parse(await js(READ) ?? '{}')
 check('回到列表页地球还在（不是一次性组件）', backList.panel === true, JSON.stringify(backList.panel))
 
+console.log('\n=== 五点五、点那行名字（标签）打开对应机器 ===')
+// 挑一个**完全落在 SVG 盒子内**的可见标签，并用 elementFromPoint 看它中心像素上是不是它自己
+// （挑「点得中」的那个做点击用例；旧构建上标签是 pointer-events: none，一个都点不中）。
+// ★ 这个辅助直接写在模板字符串里，别塞反引号、别塞 ${} —— 就一段朴素表达式。
+const pickLabel = `(() => {
+  const svg = document.querySelector('.globe-atlas svg');
+  if (!svg) return null;
+  const box = svg.getBoundingClientRect();
+  const all = [...svg.querySelectorAll('.globe-label')];
+  let fallback = null;
+  for (const t of all) {
+    const r = t.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) continue;
+    if (r.left < box.left || r.right > box.right || r.top < box.top || r.bottom > box.bottom) continue;
+    const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
+    const el = document.elementFromPoint(cx, cy);
+    const self = el === t || (el && t.contains(el));
+    const g = t.closest('g');
+    const ti = g ? g.querySelector('title') : null;
+    const info = { text: t.textContent, node: t.getAttribute('data-node'), x: cx, y: cy, w: Math.round(r.width), h: Math.round(r.height), pe: getComputedStyle(t).pointerEvents, cursor: getComputedStyle(t).cursor, title: ti ? ti.textContent : null, self: !!self };
+    if (self) return JSON.stringify(info);
+    if (!fallback) fallback = info;
+  }
+  return fallback ? JSON.stringify(fallback) : null;
+})()`
+const waitLabel = async () => {
+  for (let i = 0; i < 12; i++) {
+    const raw = await js(pickLabel)
+    if (raw) return JSON.parse(raw)
+    await sleep(300)
+  }
+  return null
+}
+const L1 = await waitLabel()
+check('自检：找得到一个完整可见的标签', L1 !== null, L1 ? `「${L1.text}」` : '没有可见标签')
+check('★ 标签带 data-node（点它认得出是哪台机器）', L1?.node != null, `data-node=${L1?.node}`)
+check('★ 标签吃指针（pointer-events 不再被一刀切成 none）', L1?.pe !== 'none', `pointer-events=${L1?.pe} cursor=${L1?.cursor}`)
+check('标签有悬停提示（所在那一组的 title 里有「打开」）', /打开/.test(L1?.title ?? ''), JSON.stringify(L1?.title ?? null))
+check('★ 标签中心那一点真的落在标签自己身上（没被别的东西盖住）', L1?.self === true)
+// 命中区够不够：在整行盒里均匀采样 10 点，至少 8 点得落在标签自己身上
+// （文字只有 ~11px 高，命中区要是缩成字形细缝，鼠标勉强、手机就点不着了）。
+const spread = await js(`(() => {
+  const svg = document.querySelector('.globe-atlas svg');
+  let t = null;
+  for (const el of svg.querySelectorAll('.globe-label')) { if (el.getAttribute('data-node') === '${L1?.node ?? ''}') { t = el; break } }
+  if (!t) return null;
+  const r = t.getBoundingClientRect();
+  const pts = [
+    [r.left + 1.5, r.top + 1.5], [r.right - 1.5, r.top + 1.5],
+    [r.left + 1.5, r.bottom - 1.5], [r.right - 1.5, r.bottom - 1.5],
+    [r.left + r.width / 2, r.top + 1.5], [r.left + r.width / 2, r.bottom - 1.5],
+    [r.left + 1.5, r.top + r.height / 2], [r.right - 1.5, r.top + r.height / 2],
+    [r.left + r.width / 4, r.top + 1.5], [r.left + r.width * 3 / 4, r.bottom - 1.5],
+  ];
+  let hit = 0;
+  for (const p of pts) { const el = document.elementFromPoint(Math.round(p[0]), Math.round(p[1])); if (el === t) hit++; }
+  return String(hit);
+})()`)
+check('★ 整行都点得着（盒内采样 10 点至少 8 点命中它自己）', Number(spread) >= 8, `命中 ${spread}/10`)
+if (L1?.self) {
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: L1.x, y: L1.y, button: 'left', buttons: 1, clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: L1.x, y: L1.y, button: 'left', buttons: 0, clickCount: 1 })
+  await sleep(700)
+}
+const byLabel = JSON.parse(await js(READ))
+check('★ 点标签进得去**它对应的那台**（URL = /node/<data-node>）', L1?.node != null && byLabel.url === `/node/${L1.node}`, `${byLabel.url} 期望 /node/${L1?.node}`)
+check('  详情页真的画出来了（不是整页空白）', /CPU|内存/.test(String(await js('document.body.innerText')).slice(0, 200)))
+await js(`(() => { history.pushState({}, '', '/'); location.reload(); return true })()`)
+await sleep(900)
+
+console.log('\n=== 五点七、针的键盘可达（Tab 到针、Enter 打开；2026-10-12 的创意项） ===')
+// 每一枚命中圆都是一枚真焦点（tabIndex=0 + role=button + aria-label），地球不再整块
+// 对读屏隐藏；装饰件（标签文字、台数角标）标掉 aria-hidden，不重复播报。
+const kbd = JSON.parse((await js(`(() => {
+  const svg = document.querySelector('.globe-atlas svg');
+  if (!svg) return 'null';
+  const hits = [...svg.querySelectorAll('.hit')];
+  return JSON.stringify({
+    ariaHidden: svg.getAttribute('aria-hidden'), group: svg.getAttribute('role'), ariaLabel: svg.getAttribute('aria-label'),
+    n: hits.length,
+    allFocusable: hits.every((h) => h.getAttribute('tabindex') === '0' && h.getAttribute('role') === 'button' && (h.getAttribute('aria-label') || '').startsWith('打开')),
+    firstLabel: hits[0] ? hits[0].getAttribute('aria-label') : null,
+    labelsHidden: [...svg.querySelectorAll('.globe-label')].every((t) => t.getAttribute('aria-hidden') === 'true'),
+    countsHidden: [...svg.querySelectorAll('.globe-count')].every((t) => t.getAttribute('aria-hidden') === 'true'),
+  });
+})()`)) ?? 'null') ?? {}
+check('★ 地球整块不再对读屏隐藏（role=group + 「节点地球」的名字）',
+  kbd.ariaHidden === null && kbd.group === 'group' && !!kbd.ariaLabel,
+  JSON.stringify({ ariaHidden: kbd.ariaHidden, group: kbd.group, label: kbd.ariaLabel }))
+check('★ 每一枚针都是真焦点（tabIndex=0 + role=button + 「打开 …」的 aria-label）',
+  kbd.n > 0 && kbd.allFocusable, `${kbd.n} 枚，首枚 label=${JSON.stringify(kbd.firstLabel)}`)
+check('装饰件不重复播报（标签文字与台数角标都 aria-hidden）', kbd.labelsHidden && kbd.countsHidden,
+  `标签 ${kbd.labelsHidden} 角标 ${kbd.countsHidden}`)
+// 走到第一枚针上按 Enter：焦点环（.hit:focus-visible 的描边）应当画出来，Enter 进它的详情页。
+const firstId = await js(`(() => { const h = document.querySelector('.globe-atlas svg .hit'); if (!h) return null; h.focus(); return document.activeElement === h ? h.getAttribute('data-node') : null })()`)
+check('（前置）能把焦点放到那枚针上', firstId != null, `data-node=${firstId}`)
+const ring = await js(`(() => { const h = document.querySelector('.globe-atlas svg .hit'); const cs = getComputedStyle(h); return JSON.stringify({ w: cs.strokeWidth, s: cs.stroke }) })()`)
+const ringOk = (() => { try { const r = JSON.parse(ring); return r.w === '1.5px' && r.s !== 'none' } catch { return false } })()
+check('★ 焦点环画出来了（命中圆描边切到 1.5px 的前景色）', ringOk, ring)
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+await sleep(700)
+const kbdOpen = JSON.parse(await js(READ))
+check('★ Enter 打开那枚针对应的机器（URL = /node/<data-node>）',
+  firstId != null && kbdOpen.url === `/node/${firstId}`, `${kbdOpen.url} 期望 /node/${firstId}`)
+check('  详情页真的画出来了（不是整页空白）', /CPU|内存/.test(String(await js('document.body.innerText')).slice(0, 200)))
+await js(`(() => { history.pushState({}, '', '/'); location.reload(); return true })()`)
+await sleep(900)
+
+// 从标签上按下再拖：和从针上拖一样 —— 转地球、不误开（标签不能把手势吃掉）。
+const L2 = await waitLabel()
+const capBefore = JSON.parse(await js(READ)).caption
+if (L2) {
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: L2.x, y: L2.y, button: 'left', buttons: 1, clickCount: 1 })
+  for (let i = 1; i <= 5; i++) {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: L2.x - i * 20, y: L2.y, button: 'left', buttons: 1 })
+    await sleep(30)
+  }
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: L2.x - 100, y: L2.y, button: 'left', buttons: 0, clickCount: 1 })
+  await sleep(300)
+}
+const byLabelDrag = JSON.parse(await js(READ))
+check('★ 从标签上拖拽：转地球、不误开机器', byLabelDrag.url === '/' && byLabelDrag.caption !== capBefore, `${byLabelDrag.url} / ${capBefore} → ${byLabelDrag.caption}`)
+
 console.log('\n=== 六、顶栏开关：关掉、刷新还记得、再打开 ===')
 await js(`document.querySelector('.globe-toggle').click()`)
 await sleep(400)
@@ -476,8 +621,8 @@ check('地区台数合计 = 有落点的台数（没落点的不进地区列表�
 check('★ 一个 HK 只有一行（带线索与不带线索不再裂成「HK」+「Hong Kong」两行）',
   s.regs.filter((r) => r.text === 'Hong Kong').length === 1 && s.regs.find((r) => r.text === 'Hong Kong')?.count === 5 && !s.regs.some((r) => r.text === 'HK'),
   JSON.stringify(s.regs.map((r) => [r.text, r.count])))
-check('★ 兜底的国家不出裸码行（HK/TW/SG/JP/KR 都有城名；US/DE 这类照旧退国家码）',
-  !s.regs.slice(1).some((r) => ['HK', 'TW', 'SG', 'JP', 'KR'].includes(r.text)) && s.regs.some((r) => r.text === 'US'),
+check('★ 不出现裸码行（HK/TW/SG/JP/KR 有城名；US/DE 这类认不出城市写国家名）',
+  !s.regs.slice(1).some((r) => /^[A-Z]{2}$/.test(r.text)) && s.regs.some((r) => r.text === 'United States') && s.regs.some((r) => r.text === 'Germany'),
   JSON.stringify(s.regs.map((r) => r.text)))
 // ★ 2026-10-08：地区行上的离线可见性（这块面板以前对「离线」一个字都不说）。有离线的
 //   行挂一枚小点 + 悬停写明台数；全在线的行不许有点。
@@ -486,8 +631,8 @@ check('★ 兜底的国家不出裸码行（HK/TW/SG/JP/KR 都有城名；US/DE 
   check('★ 地区里有离线机器时行上看得到（HK 那行：小点 + 悬停「5 台 · 1 台离线」）',
     hkRow?.dot === true && (hkRow.title || '').indexOf('5 台') >= 0 && (hkRow.title || '').indexOf('1 台离线') >= 0,
     JSON.stringify(hkRow))
-  const usRow = s.regs.find((r) => r.text === 'US')
-  check('★ 全在线的地区不带离线点（US 那行）', usRow?.dot === false, JSON.stringify(usRow))
+  const usRow = s.regs.find((r) => r.text === 'United States')
+  check('★ 全在线的地区不带离线点（United States 那行）', usRow?.dot === false, JSON.stringify(usRow))
   check('「全部」那行悬停写明合计口径（27 台里有 2 台认不出国家、不上地区列表）',
     (s.regs[0].title || '').indexOf('27 台') >= 0 && (s.regs[0].title || '').indexOf('2 台') >= 0 && (s.regs[0].title || '').indexOf('认不出国家') >= 0,
     s.regs[0].title)

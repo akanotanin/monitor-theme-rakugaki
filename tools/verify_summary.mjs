@@ -210,6 +210,34 @@ const evalJS = async (expr) => (await send('Runtime.evaluate', { expression: exp
 
 await send('Runtime.enable')
 await send('Page.enable')
+// ★headless 里窗口本身没有焦点（document.hasFocus() === false）：这时 el.focus() 只改
+//   activeElement、**不派发 focus/focusin 事件** —— React 的 onFocus 收不到，「聚焦开浮层」
+//   那类交互在测试里永远不开（2026-10-12 实测踩到：activeElement 对得上、事件不来）。
+//   打开焦点模拟（CDP 专为这个场景提供），focus() 才产生真正的事件。
+await send('Emulation.setFocusEmulationEnabled', { enabled: true })
+// ★每日汇率（2026-10-12）：页面会异步拉公开汇率源（lib/fx.ts）——护栏里把「站外请求」一律
+//   拒掉（确定性走内置表那一档），并用 ?fxseed 开关种一份「新鲜缓存」来测每日汇率那一档。
+//   两档都有确定断言；不种缓存的用例全部吃内置表口径（与 939.51 之类既有一致）。
+const FX_STUB = `
+try {
+  if (location.search.includes('fxseed')) {
+    localStorage.setItem('rakugaki:fx', JSON.stringify({
+      rates: { CNY: 1, USD: 7.1234, EUR: 7.5678, GBP: 9.0123, JPY: 0.043, HKD: 0.85, TWD: 0.21, SGD: 5.3, AUD: 4.7, CAD: 4.75, RUB: 0.08 },
+      date: '2026-10-11', at: Date.now(),
+    }))
+  } else {
+    localStorage.removeItem('rakugaki:fx')
+  }
+} catch {}
+const __origFetch = window.fetch.bind(window)
+window.fetch = (u, o) => {
+  const s = String(u)
+  return s.startsWith('http') && !s.startsWith(location.origin)
+    ? Promise.reject(new Error('stub: offsite blocked'))
+    : __origFetch(u, o)
+}
+`
+await send('Page.addScriptToEvaluateOnNewDocument', { source: FX_STUB })
 const WIDE = { width: 1440, height: 1200, deviceScaleFactor: 1, mobile: false }
 await send('Emulation.setDeviceMetricsOverride', WIDE)
 await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] })
@@ -292,10 +320,11 @@ const PROBE = `JSON.stringify((() => {
   }
 })())`
 
-async function render(cfg, tag = '', v = 'mixed') {
+async function render(cfg, tag = '', v = 'mixed', seed = false) {
   config = cfg
   await fetch(`http://127.0.0.1:${PORT}/__variant?name=${v}`)
-  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?m=${encodeURIComponent(tag)}` })
+  // seed=true → URL 挂 ?fxseed=1：注入脚本会给页面种一份「新鲜的每日汇率缓存」（见 FX_STUB）。
+  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?m=${encodeURIComponent(tag)}${seed ? '&fxseed=1' : ''}` })
   let dom = null
   for (let i = 0; i < 60; i++) {
     await sleep(300)
@@ -355,6 +384,27 @@ const multi = (dom) => dom.tiles.filter((t) => t.titles.length > 1)
 const tile = (dom, title) => dom.tiles.find((t) => t.titles.includes(title)) ?? MISSING
 /** 一块读数自己的文本（卡片里有两块时不能拿整张卡片的文本去比）。 */
 const block = (dom, title) => tile(dom, title).blocks.find((b) => b.title === title) ?? MISSING.blocks[0]
+
+/**
+ * 第一张卡里某块读数（默认「月度预算」，可传「剩余价值」）的悬停浮层（2026-10-12 的创意项）：
+ * 把块聚焦（等价悬停，鼠标 hover 与键盘 focus 走同一个 open），读 [data-budget-detail] 里的
+ * 明细行与全文；没浮层返回 null。读之前会让页面多等两帧 —— focus() 触发的 setState 要等
+ * React 提交完才看得到 DOM。
+ */
+const readBudgetDetail = (title = '月度预算') => evalJS(`(async () => {
+  const card = [...document.querySelectorAll('[data-slot=card]')].find((c) => c.innerText.startsWith('月度预算'))
+  if (!card) return null
+  const b = [...card.children].find((x) => x.innerText.startsWith(${JSON.stringify(title)}))
+  if (!b) return null
+  b.focus()
+  await new Promise((r) => setTimeout(r, 90))
+  const d = b.querySelector('[data-budget-detail]')
+  if (!d) return null
+  const cs = getComputedStyle(d)
+  return { rows: [...d.querySelectorAll('[data-budget-row]')].map((r) => r.innerText.replace(/\\n/g, ' | ')),
+    text: d.innerText.replace(/\\n/g, ' | '),
+    maxHeight: cs.maxHeight, overflowY: cs.overflowY, clientH: d.clientHeight, scrollH: d.scrollHeight }
+})()`)
 
 /** 一张卡里两块读数：左块贴左、右块贴右、两块不重叠、下沿对齐、数字没被截断。 */
 function checkPair(where, t, cardPad = 16) {
@@ -481,17 +531,95 @@ let classicNet = null
   checkColumn('预算版', [tile(dom, '月度预算'), tile(dom, '节点')])
   checkRhythm('预算版', dom)
 
-  // 悬停提示：口径与汇率都得写清（面板上看不出「≈」是怎么来的）
-  const budgetHint = tile(dom, '月度预算').blocks[0].hint
-  const valueHint = tile(dom, '剩余价值').blocks[1].hint
-  check('预算版：月度预算的提示写明口径（计费周期 / 一次性买断不计入）与实际用到的汇率',
-    budgetHint.includes('计费周期') && budgetHint.includes('一次性买断') &&
-    budgetHint.includes('1 EUR = ¥7.6172') && budgetHint.includes('1 USD = ¥6.7179') &&
-    !budgetHint.includes('1 CNY'),
-    budgetHint)
-  check('预算版：剩余价值的提示写明口径（价格 × 剩余天数 ÷ 周期天数）',
-    valueHint.includes('剩余天数') && valueHint.includes('无到期日') && valueHint.includes('折算'), valueHint)
-  check('预算版：折算日期写在提示里（不写来源站点）', budgetHint.includes('2026-09-30') && !/https?:\/\/|[a-z0-9-]+\.(com|net|org|io)/.test(budgetHint), budgetHint)
+  // 悬停提示：口径与汇率都得写清（面板上看不出「≈」是怎么来的）。
+  // ★2026-10-12：两块都改成了「悬停/聚焦弹浮层」（逐台明细），口径文字从原生 title 挪进
+  //   浮层尾巴 —— 断言跟着改成「聚焦后读浮层」；两块各读各的浮层。
+  const pop = await readBudgetDetail()
+  const popValue = await readBudgetDetail('剩余价值')
+  check('预算版：月度预算的浮层写明口径（计费周期 / 一次性买断不计入）与实际用到的汇率',
+    !!pop && pop.text.includes('计费周期') && pop.text.includes('一次性买断') &&
+    pop.text.includes('1 EUR = ¥7.6172') && pop.text.includes('1 USD = ¥6.7179') &&
+    !pop.text.includes('1 CNY'),
+    pop?.text ?? '（没有浮层）')
+  check('预算版：剩余价值的浮层写明口径（价格 × 剩余天数 ÷ 周期天数 / 无到期日不计入）与汇率',
+    !!popValue && popValue.text.includes('剩余天数') && popValue.text.includes('无到期日') &&
+    popValue.text.includes('1 EUR = ¥7.6172') && popValue.text.includes('1 USD = ¥6.7179'),
+    popValue?.text ?? '（没有浮层）')
+  check('预算版：折算日期写在浮层里（不写来源站点）',
+    !!pop && pop.text.includes('2026-09-30') && !/https?:\/\/|[a-z0-9-]+\.(com|net|org|io)/.test(pop.text),
+    pop?.text ?? '')
+
+  // 浮层明细：行数 = 「N 台计费」、金额降序、各行之和 ≈ 卡片大数（同一份口径的另一副牙齿）。
+  const budgetText = block(dom, '月度预算').text
+  const count = Number((budgetText.match(/(\d+) 台计费/) || [])[1] ?? NaN)
+  const big = Number(((budgetText.match(/¥([\d,]+\.\d\d)/) || [])[1] ?? '').replace(/,/g, '') || NaN)
+  const sums = (pop?.rows ?? []).map((r) => Number(((r.match(/¥([\d,]+\.\d\d)/) || [])[1] ?? '').replace(/,/g, '') || NaN))
+  check('预算版·浮层：悬停/聚焦出现，行数 = 「N 台计费」',
+    !!pop && pop.rows.length === count && count > 0, `浮层行数 ${pop?.rows.length} ／ 卡片「${count} 台计费」`)
+  check('预算版·浮层：各行金额降序（贵的在前）',
+    sums.length > 0 && sums.every((v, i) => i === 0 || (Number.isFinite(v) && Number.isFinite(sums[i - 1]) && sums[i - 1] >= v)),
+    JSON.stringify(sums))
+  check('预算版·浮层：各行金额之和 ≈ 卡片大数（同一份口径）',
+    sums.length > 0 && Math.abs(sums.reduce((a, b) => a + b, 0) - big) <= 0.02,
+    `明细和 ${sums.reduce((a, b) => a + b, 0).toFixed(2)} vs 卡片 ${big}`)
+  check('预算版·浮层：表头是「各节点月摊 · N 台」（N=「台计费」数）', !!pop && pop.text.includes(`各节点月摊 · ${count} 台`), pop?.text ?? '')
+  // ★2026-10-12 浮层限高：近百台明细不许把浮层拉出屏幕 —— min(24rem,60vh) + 内部滚动
+  //   （.budget-detail，紧贴块底无 margin gap，悬停能摸进浮层）。
+  check('预算版·浮层：限高生效（max-height 有值 / overflow-y: auto）',
+    !!pop && pop.maxHeight !== 'none' && pop.overflowY === 'auto',
+    `max-height=${pop?.maxHeight} / overflow-y=${pop?.overflowY}`)
+
+  // 剩余价值浮层（2026-10-12 加装）：同一套牙齿 —— 行数 = 「N 台未到期」、降序、和 ≈ 大数。
+  const valueText = block(dom, '剩余价值').text
+  const vCount = Number((valueText.match(/(\d+) 台未到期/) || [])[1] ?? NaN)
+  const vBig = Number(((valueText.match(/¥([\d,]+\.\d\d)/) || [])[1] ?? '').replace(/,/g, '') || NaN)
+  const vSums = (popValue?.rows ?? []).map((r) => Number(((r.match(/¥([\d,]+\.\d\d)/) || [])[1] ?? '').replace(/,/g, '') || NaN))
+  check('预算版·剩余价值浮层：表头是「各节点剩余价值 · N 台」（N=「台未到期」数）', !!popValue && popValue.text.includes(`各节点剩余价值 · ${vCount} 台`), popValue?.text ?? '')
+  check('预算版·剩余价值浮层：行数 = 「N 台未到期」', !!popValue && popValue.rows.length === vCount && vCount > 0,
+    `浮层行数 ${popValue?.rows.length} ／ 卡片「${vCount} 台未到期」`)
+  check('预算版·剩余价值浮层：各行金额降序（贵的在前）',
+    vSums.length > 0 && vSums.every((v, i) => i === 0 || (Number.isFinite(v) && Number.isFinite(vSums[i - 1]) && vSums[i - 1] >= v)),
+    JSON.stringify(vSums))
+  check('预算版·剩余价值浮层：各行金额之和 ≈ 卡片大数（同一份口径）',
+    vSums.length > 0 && Math.abs(vSums.reduce((a, b) => a + b, 0) - vBig) <= 0.02,
+    `明细和 ${vSums.reduce((a, b) => a + b, 0).toFixed(2)} vs 卡片 ${vBig}`)
+
+  // ★每日汇率（2026-10-12）：种一份缓存（?fxseed=1）→ 数字按种子汇率折算、口径文案改口
+  //   「按每日更新的汇率折算」并自报种子日期——同一份夹具走两种口径（内置 vs 每日），
+  //   两种都必须自洽。夹具的账：12 USD 月付 + 120 USD 年付 + 300 EUR 季付 + 30 CNY，
+  //   月摊 = 12×7.1234 + 120×7.1234÷12 + 300×7.5678÷3 + 30 = 943.4948 → ≈¥943.49。
+  {
+    const fxDom = await render({ listTop: 'budget' }, 'fx-seed', 'mixed', true)
+    check('每日汇率：种子汇率被采纳（月度预算 ≈¥943.49）',
+      block(fxDom, '月度预算').text === '月度预算 | ≈¥943.49 | 4 台计费', block(fxDom, '月度预算').text)
+    const fxPop = await readBudgetDetail()
+    check('每日汇率：口径文案改口并自报种子日期（1 USD = ¥7.1234，2026-10-11）',
+      !!fxPop && fxPop.text.includes('按每日更新的汇率折算') && fxPop.text.includes('1 USD = ¥7.1234') &&
+      fxPop.text.includes('1 EUR = ¥7.5678') && fxPop.text.includes('2026-10-11'),
+      fxPop?.text ?? '（没有浮层）')
+  }
+  // 收起：Esc；以及焦点离开（blur）。
+  const popEsc = await evalJS(`(async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await new Promise((r) => setTimeout(r, 80))
+    return !document.querySelector('[data-budget-detail]')
+  })()`)
+  check('预算版·浮层：Esc 收起', popEsc === true, String(popEsc))
+  const popBlur = await evalJS(`(async () => {
+    // 先把焦点清掉再聚焦：上一个测试（Esc）之后焦点仍在块上，对已聚焦元素再 focus() 是
+    // no-op、不会重新触发 onFocus —— 那样测出来的「开」是假的。
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur()
+    await new Promise((r) => setTimeout(r, 60))
+    const card = [...document.querySelectorAll('[data-slot=card]')].find((c) => c.innerText.startsWith('月度预算'))
+    const b = [...card.children].find((x) => x.innerText.startsWith('月度预算'))
+    b.focus()
+    await new Promise((r) => setTimeout(r, 90))
+    const opened = !!document.querySelector('[data-budget-detail]')
+    b.blur()
+    await new Promise((r) => setTimeout(r, 90))
+    return opened && !document.querySelector('[data-budget-detail]')
+  })()`)
+  check('预算版·浮层：焦点离开（blur）收起', popBlur === true, `开→关 ${popBlur}`)
 }
 
 /* 4) 一块都没有 / 一次性买断 / 没有汇率的降级 */
@@ -504,6 +632,8 @@ let classicNet = null
   check('没填价格：提示里只写「按固定汇率折算成人民币」（没有汇率可列）',
     block(free, '月度预算').hint === '各节点的价格按计费周期摊到每个月后相加；一次性买断与没填价格的不计入。按固定汇率折算成人民币',
     block(free, '月度预算').hint)
+  check('没填价格：两块都不挂浮层（没有明细可摊，保持原生 title 那一副面孔）',
+    (await readBudgetDetail()) === null && (await readBudgetDetail('剩余价值')) === null, '浮层不应出现')
 
   const once = await render({ listTop: 'budget' }, 'once', 'once')
   check('一次性买断：两块都不计入（没有「每月」也没有「剩余天数」）',
@@ -514,8 +644,11 @@ let classicNet = null
   check('没有汇率的币种：只算人民币那台（月 ≈¥20.00 / 剩 ≈¥6.67）',
     block(exotic, '月度预算').text === '月度预算 | ≈¥20.00 | 1 台计费' && block(exotic, '剩余价值').text === '剩余价值 | ≈¥6.67 | 1 台未到期',
     `${block(exotic, '月度预算').text} ／ ${block(exotic, '剩余价值').text}`)
-  check('没有汇率的币种：提示里点名（XYZ 没有汇率，未计入）',
-    block(exotic, '月度预算').hint.includes('XYZ 没有汇率，未计入'), block(exotic, '月度预算').hint)
+  const popEx = await readBudgetDetail()
+  check('没有汇率的币种：浮层照常出现，口径行点名 XYZ', !!popEx && popEx.text.includes('XYZ 没有汇率，未计入'), popEx?.text ?? '（没有浮层）')
+  const popExV = await readBudgetDetail('剩余价值')
+  check('没有汇率的币种：剩余价值浮层 1 行、金额 ≈¥6.67', !!popExV && popExV.rows.length === 1 && popExV.rows[0].includes('6.67'),
+    popExV?.rows?.join(' / ') ?? '（没有浮层）')
 }
 
 /* 5) 全掉线：最忙节点与网速的降级（两副面孔都要） */
@@ -705,6 +838,26 @@ let classicNet = null
 
   const back = await clickGroup('全部')
   check('分组跟随：点回「全部」后概览逐字复原', sig(back.dom) === fleetSig, `复原后 ${sig(back.dom)}`)
+
+  // ★ 分组也进地址栏（2026-10-12 的创意项）：点「欧洲」→ `?group=`；刷新后仍停在那一档；
+  //   点回「全部」→ 参数消失。
+  await clickGroup('欧洲')
+  const groupUrl = decodeURIComponent(String(await evalJS('location.search')))
+  check('★ 选了分组：地址栏带上了 group 参数（分享/刷新都带着这一屏）',
+    groupUrl.includes('group=') && groupUrl.includes('欧洲'), JSON.stringify(groupUrl))
+  await send('Page.reload')
+  let afterGroup = null
+  for (let i = 0; i < 24; i++) {
+    await sleep(250)
+    try { afterGroup = JSON.parse(await evalJS(PROBE)) } catch { continue }
+    if (afterGroup && afterGroup.groupRow && afterGroup.groupRow.tabs.find((t) => t.text.includes('欧洲'))?.pressed) break
+  }
+  check('★ 刷新之后：分组选择原样复原（「欧洲」仍被按下、概览还是那两台）',
+    afterGroup?.groupRow?.tabs?.find((t) => t.text.includes('欧洲'))?.pressed === true && sig(afterGroup) === sig(soloEu),
+    `tabs=${JSON.stringify(afterGroup?.groupRow?.tabs?.map((t) => [t.text, t.pressed]))}`)
+  await clickGroup('全部')
+  const groupClean = String(await evalJS('location.search'))
+  check('★ 点回「全部」：地址栏回到干净的 /（参数消失）', groupClean === '', JSON.stringify(groupClean))
 
   // 走势线取的是**当前分组**那条序列：数字跟着走、线却画全站的话，上面那些文本断言看不见。
   // 夹具里「美国」那台是 rx 512KB > tx 128KB，而全站合计是 rx 20.5MB < tx 40.125MB ——
