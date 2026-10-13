@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react"
+import { useRef, useState, type ComponentType, type ReactNode } from "react"
 import {
-  ArrowDown, ArrowDownUp, ArrowUp, CalendarClock, Cpu, HardDrive, Lock, MemoryStick, Info,
+  ArrowDown, ArrowDownUp, ArrowUp, CalendarClock, Cpu, HardDrive, Lock, MemoryStick,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { LatencyPanel, PeekLatency } from "@/components/Latency"
+import { LatencyPanel } from "@/components/Latency"
 import { TextHighlight } from "@/components/TextHighlight"
 import { Meter } from "@/components/Meter"
 import type { Node } from "@/lib/api"
@@ -108,11 +108,11 @@ function onlineText(node: Node): string | null {
   return down >= 60 ? `离线 ${uptime(down)}` : "离线"
 }
 
-function priceText(node: Node): string | null {
+export function priceText(node: Node): string | null {
   return node.price > 0 ? money(node.price, node.currency) : null
 }
 
-function cycleText(node: Node): string | null {
+export function cycleText(node: Node): string | null {
   if (node.price <= 0) return null
   return CYCLES[node.billing_cycle] ?? (node.billing_cycle || null)
 }
@@ -122,7 +122,7 @@ function cycleText(node: Node): string | null {
  * 顺延到期日，访客自己按浏览器时钟算会在顺延前的那几个小时里显示成「已过期」。只有
  * 旧 hub 没这个 key 时，才退回按 `expires_at` 自己数。
  */
-function expiryText(node: Node): string | null {
+export function expiryText(node: Node): string | null {
   const days = node.expires_in !== undefined ? node.expires_in : daysUntil(node.expires_at)
   if (days === null || days === undefined) return null
   if (days < 0) return `已过期 ${-days} 天`
@@ -232,45 +232,22 @@ export function NodeCard({ node, onOpen, onOpenLatency, onWarm, latencyLines, ca
   // 这台机器的备注（见 @/lib/notes）：私有在前（仅自己可见）、公有在后，都拆成一枚枚小卡片。
   // 备注那一串：先按「备注显示位置」判这一侧要不要摊，再交给 @/lib/notes 拆（私有在前、公有在后）。
   const chips = remarksOnCards(remarkPlacement ?? "both") ? remarkChips(node) : []
-  /**
-   * 「经典」「延迟」两档右上角那枚信息控件：悬停或点击弹出浮层，里面是
-   * **备注（写了才有）+ 在线时间 + 价格 + 到期**。
-   *
-   * 这两档本来不写这些（它们原来只有「详细」档有），浮层让它们按需出现；控件本身只有 20px、
-   * 挂在标题行右端，卡片其余部分一个像素都不为它让位。★这两档**常驻**这枚控件（站长 2026-10-03 定的）：
-   * 没写备注的机器点开也能看到在线时间/价格/到期——不然那几项在这两档上根本无处可看。
-   */
-  const peek = cardStyle === "classic" || cardStyle === "latency"
-  const [peekOpen, setPeekOpen] = useState(false)
-  const peekRef = useRef<HTMLSpanElement>(null)
+  // 「经典」「延迟」两档右上角那枚 ⓘ 悬浮层已于 2026-10-14 按站长要求退役：
+  // 计费与到期改在详情页看（NodeDetail 的「计费 / 到期」两格），这两档卡面不再摊任何浮层。
   // 「详细」档标题行那一格：悬停弹悬浮层，把放不下的备注看全（只有这一档有，另两档收在 ⓘ 里）。
   const [titlePeek, setTitlePeek] = useState(false)
   const titlePeekRef = useRef<HTMLSpanElement>(null)
-  // 钉住（点开）之后点别处要能收起；点卡片别的地方会跳详情页，所以只在浮层外按下时收。
-  useEffect(() => {
-    if (!peekOpen) return
-    const onDown = (e: PointerEvent) => {
-      // 别写 `e.target as Node`：本文件里的 `Node` 是主题自己的节点类型（@/lib/api），
-      // 会和 DOM 的 Node 撞名。用 instanceof 收窄，既避开名字冲突也真的判了类型。
-      const el = e.target
-      if (!(el instanceof HTMLElement) || !peekRef.current?.contains(el)) setPeekOpen(false)
-    }
-    document.addEventListener("pointerdown", onDown)
-    return () => document.removeEventListener("pointerdown", onDown)
-  }, [peekOpen])
-  const price = priceText(node)
-  const cycle = cycleText(node)
-
   // 卡片底部那一行网络：简约 / 延迟两档共用**同一个节点**——一行两段，左边实时速率（墨色）、
   // 右边累计总量（弱化灰），上面一条手画的分隔线；方向用文字 ↓ ↑ 而不是图标，这样整段能原样
   // 复制成「↓ 88 B/s ↑ 312 B/s」。延迟档原本是「上下行各一组、组内用分隔点连起来」的两端式，
   // 按要求与简约看齐后也改成这条；两档同一个节点，也是护栏里「逐项相同」那条等价断言的前提。
   // `data-net` 是给护栏认这一行的锚点（改版后那两条旧判据——按 2×2 那格的类名、按分隔点那行——
   // 都会失配，命中 0 反而看着像「本来就没有」）。
-  // ★ 这一行**必须允许折行**：本主题的读数走等宽字（JetBrains Mono），比 jikasei 那套 mono 栈宽
-  // 四成左右——同一批数据下 jikasei 那行只要 ~208px，这里要 ~293px，而 4 列（卡片 299px）里只有
-  // ~263px。不折行就两端各自被截成「↓ 3.8 KB/s ↑ 2.8 … / ↓ 7.47 GB ↑ 737…」（实测，见
-  // verify_card_styles 里那条「没有被截断」的断言）。折行后 4 列下是两行、3 列及更宽仍是一行。
+  // ★ 这一行允许折行是深兜底（真实机型到不了那一步）：读数层在窄卡里由 index.css 的容器
+  // 查询整体降到 11px + 字距 -1px（内容盒 ≤288px 生效），最坏形状需宽 ~253px——4 列桌面
+  // 与最窄两列一律单行；只有 640px 视口那一档的极端读数（双向都 ≥999 KB/s）才会回落折行。
+  // （2026-10-14 站长截图的那份「同屏有的折有的不折」，就是换手写数字后内容宽度恰好落在
+  // 可用宽临界带里——不是刻意的，容器查询上线后消失。）
   const netRow = (
     <div data-net="row" className="tnum mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t-[1.5px] border-dashed border-line-strong pt-4 text-xs">
       <span className="truncate">{m ? `↓ ${rate(m.net_rx)} ↑ ${rate(m.net_tx)}` : "—"}</span>
@@ -334,7 +311,7 @@ export function NodeCard({ node, onOpen, onOpenLatency, onWarm, latencyLines, ca
             早先写的是「两边都让一点 + 备注 [flex-shrink:100]」：那在手机 390 + 长名字时仍会让
             名字少 2px 并被截断（护栏实测 175 → 173px），因为 shrink 是按「收缩系数 × 基准尺寸」
             分摊的，只要备注有基准尺寸就会分走一点。
-            ★「经典」档不挂在这里：它与「延迟」档一样把备注收进右上角那枚浮层（见下面那个控件）。
+            ★「经典」「延迟」两档不挂在这里：悬浮层已退役（2026-10-14），这两档卡面不摊备注。
             「紧凑」档收在展开行量程栏那格（见 NodeDetail）。 */}
         {detailed && chips.length > 0 && (
           /* 「详细」档的备注：**只占一行**（零行高、名字不受影响），放不下的部分裁在边缘外，
@@ -354,67 +331,9 @@ export function NodeCard({ node, onOpen, onOpenLatency, onWarm, latencyLines, ca
             {titlePeek && (
               <span
                 data-remark-panel
-                className="absolute right-0 top-5 z-20 flex w-max max-w-[18rem] flex-wrap justify-end gap-1 rounded-md border bg-popover px-2 py-1.5 shadow-md"
+                className="sk-pop absolute right-0 top-5 z-20 flex w-max max-w-[18rem] flex-wrap justify-end gap-1 px-2 py-1.5"
               >
                 <RemarkChips chips={chips} />
-              </span>
-            )}
-          </span>
-        )}
-        {/* 「经典」「延迟」两档右上角的信息控件（悬停/点击弹浮层：备注 · 在线时间 · 价格 · 到期，
-            经典档最下面还有一条分隔线 + 三网延迟）。卡片自己是 role=button，所以点击与
-            Enter/空格都要拦在控件里，别让它冒泡成「打开详情页」；浮层挂在同一个 relative 容器内，
-            鼠标从图标移到浮层上不会把它关掉。
-            ★ 这两档常驻这枚控件（20px，挂在标题行右端）：没写备注时它照样在，
-            点开是在线时间/价格/到期；「详细」档不挂它——那几项本来就在卡面上写着。 */}
-        {peek && (
-          <span
-            ref={peekRef}
-            className="relative ml-auto shrink-0"
-            onPointerEnter={() => setPeekOpen(true)}
-            onPointerLeave={() => setPeekOpen(false)}
-          >
-            <button
-              type="button"
-              data-note-popover=""
-              aria-expanded={peekOpen}
-              aria-label="备注、在线时间、价格、到期与三网延迟"
-              onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setPeekOpen(false) }}
-              onClick={(e) => { e.stopPropagation(); setPeekOpen((v) => !v) }}
-              className="grid size-5 place-items-center rounded-full text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <Info className="size-3.5" />
-            </button>
-            {peekOpen && (
-              <span
-                data-note-panel=""
-                // 「经典」档最下面多一块三网延迟（名 / 延迟 / 走势线 / 丢包），要宽一点才装得下
-                // ——顺带让备注小卡片少折一行；「延迟」档这一档不带那块，也就保持原来的宽度。
-                className={`absolute right-0 top-6 z-20 block ${cardStyle === "classic" ? "w-72" : "w-56"} space-y-1.5 rounded-md border bg-popover px-3 py-2.5 text-xs shadow-md`}
-              >
-                {/* 公开备注：一枚一枚小卡片（逗号分隔的多枚也就排成多枚），
-                    没有备注的机器不占这一行。浮层是这一档唯一能读到它的地方（卡片上不占位）。 */}
-                {chips.length > 0 && (
-                  <span data-note-remark="" className="flex min-w-0 flex-wrap items-center gap-1">
-                    <RemarkChips chips={chips} />
-                  </span>
-                )}
-                <span className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">在线时间</span>
-                  <span className="tnum min-w-0 truncate">{onlineText(node) ?? "—"}</span>
-                </span>
-                {price && (
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground">价格</span>
-                    <span className="tnum min-w-0 truncate">{cycle ? `${price} / ${cycle}` : price}</span>
-                  </span>
-                )}
-                <span className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">到期</span>
-                  <span className="tnum min-w-0 truncate">{expiryText(node) ?? "无期限"}</span>
-                </span>
-                {/* 三网延迟排在计费那几行下面、自带一条分隔线；只有「经典」档挂它，且要打开浮层才取数。 */}
-                {cardStyle === "classic" && <PeekLatency node={node} lines={latencyLines} onOpen={onOpenLatency} />}
               </span>
             )}
           </span>

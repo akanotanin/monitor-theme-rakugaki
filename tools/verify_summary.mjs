@@ -10,7 +10,7 @@
 //      且照参考图节点在左、最忙节点在右，两块分居卡片两端、下沿对齐——这是纯几何，只能量；
 //   ④ 金额口径（各币种按固定汇率折成人民币、一次性买断/没填价格/没有到期日的不计入）与降级
 //      （一个可计的都没有时写「—」而不是 ¥0.00）；
-//   ⑤ 走势线要等采样攒到两个点才画，冷启动那儿是空的——这条得等出来，不能看着空就当坏了；
+//   ⑤ 走势线要等采样攒到两个点才画，冷启动头几秒不画线、只有一行手写小注（不是空窗）——这条得等出来，不能看着空就当坏了；
 //   ⑥ 全站掉线时的降级（「—」「无在线节点」而不是 0%）。
 //   ⑦ 切分组时这一行跟着当前分组重算（第 12 组）：判据是「与『站点里只有这个分组那几台』
 //      逐字相同」，不是硬编码金额——顺带钉住标签行仍在概览卡片下面、手机不横向滚。
@@ -260,7 +260,7 @@ const PROBE = `JSON.stringify((() => {
       const inner = num && num.children.length === 2 ? num.children[1] : null
       return {
         title: first(b),
-        text: b.innerText.replace(/\\n/g, ' | '),
+        text: b.innerText.replace(/\\n/g, ' | ').replace(' |  | 正在记录网速走势…', '').replace(' | 正在记录网速走势…', ''),
         x: Math.round(br.left), right: Math.round(br.right), w: Math.round(br.width),
         hint: b.getAttribute('title') || '',
         innerCol: inner ? Math.round(inner.getBoundingClientRect().left) : null,
@@ -278,7 +278,7 @@ const PROBE = `JSON.stringify((() => {
     })
     return {
       titles: blocks.map((b) => b.title),
-      text: c.innerText.replace(/\\n/g, ' | '),
+      text: c.innerText.replace(/\\n/g, ' | ').replace(' |  | 正在记录网速走势…', '').replace(' | 正在记录网速走势…', ''),
       x: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top),
       h: Math.round(r.height), blocks,
       polylines: c.querySelectorAll('svg polyline').length,
@@ -292,6 +292,8 @@ const PROBE = `JSON.stringify((() => {
     nodeCards: nodes.length,
     tiles: tiles.map(card),
     polylines: tiles.reduce((n, c) => n + c.querySelectorAll('svg polyline').length, 0),
+    // 走势线攒点期间的手写小注（冷启动不是空窗；线画出来它退场）
+    speedNote: !!document.querySelector('[data-speed-note]'),
     tileHeights: [...new Set(tiles.map((c) => Math.round(c.getBoundingClientRect().height)))],
     above: tiles.length && nodes.length ? tiles[0].getBoundingClientRect().top < nodes[0].getBoundingClientRect().top : null,
     // 分组标签行：位置与每一档的文案 / 台数 / 选中态（第 12 组断言用）
@@ -672,12 +674,14 @@ let classicNet = null
   check('最忙并列：留列表里先出现的那台', tile(tied, '最忙节点').text === '最忙节点 | 30.0% | 先出现的', tile(tied, '最忙节点').text)
 }
 
-/* 6) 走势线：冷启动没有（一个采样画不出走势），攒到两个点才画；卡片高度不因此变 */
+/* 6) 走势线：冷启动不画线（一个采样画不出走势）、攒到两个点才画；攒点期间有一行手写小注（不是空窗）；卡片高度不因此变 */
 {
   const first = await render({ listTop: 'budget' }, 'sparkline')
-  check('走势线：刚打开时不画（采样不足两个点）', first.polylines === 0, `polyline ${first.polylines}`)
+  check('走势线：刚打开时不画线（采样不足两个点）', first.polylines === 0, `polyline ${first.polylines}`)
+  check('走势线：攒点期间有一行手写小注（冷启动不是空窗）', first.speedNote === true, `speedNote=${first.speedNote}`)
   const { dom, waited } = await waitForSparkline()
   check('走势线：采样攒够后画两条（下行 + 上行）', dom.polylines === 2, `polyline ${dom.polylines}，等待 ${(waited / 1000).toFixed(1)}s`)
+  check('走势线：画出来之后手写小注退场', dom.speedNote === false, `speedNote=${dom.speedNote}`)
   check('走势线：画出来前后卡片高度不变（位置是预留的，不是撑开的）',
     dom.tileHeights[0] === first.tileHeights[0], `${first.tileHeights[0]}px → ${dom.tileHeights[0]}px`)
 }

@@ -113,7 +113,7 @@ await send('Page.navigate', { url: BASE + '/' })
 let cards = 0
 for (let i = 0; i < 60; i++) {
   await sleep(400)
-  cards = await evalJS(`document.querySelectorAll('[role=button]').length`)
+  cards = await evalJS(`document.querySelectorAll('[data-slot="card"][role=button]').length`)
   if (cards > 0) break
 }
 if (!cards) throw new Error('卡片一直没出现，别拍了（这张图会是骨架态）')
@@ -126,10 +126,10 @@ if (!cards) throw new Error('卡片一直没出现，别拍了（这张图会是
 let settled = false
 for (let i = 0; i < 60; i++) {
   const state = JSON.parse(await evalJS(`JSON.stringify({
-    cards: document.querySelectorAll('[role=button]').length,
+    cards: document.querySelectorAll('[data-slot="card"][role=button]').length,
     fonts: document.fonts.status,
     tnum: [...document.querySelectorAll('.tnum')].map((el) => el.textContent.trim()),
-    meters: [...document.querySelectorAll('[role=button] .sk-bar-fill')].filter((el) => el.getBoundingClientRect().width > 0).length,
+    meters: [...document.querySelectorAll('[data-slot="card"][role=button] .sk-bar-fill')].filter((el) => el.getBoundingClientRect().width > 0).length,
   })`))
   const garbage = state.tnum.some((t) => /[#&@!*^~]/.test(t))
   const empty = state.tnum.length === 0 || state.tnum.some((t) => !t)
@@ -144,7 +144,9 @@ await sleep(4000)
 
 // 3) 拍之前把滚动条与滚动位置也钉住，别让鼠标位置影响截图
 const geometry = JSON.parse(await evalJS(`JSON.stringify((() => {
-  const cs = [...document.querySelectorAll('[role=button]')]
+  // ★只认节点卡（[data-slot=card][role=button]）：宽口径会把地球的针（SVG .hit 也是 role=button）
+  // 与概览块一起捞进来，而 SVG 元素没有 innerText —— 下面 c.innerText.split 当场 TypeError（踩过）。
+  const cs = [...document.querySelectorAll('[data-slot="card"][role=button]')]
   const last = cs[cs.length - 1]?.getBoundingClientRect()
   return {
     viewport: innerWidth + 'x' + innerHeight,

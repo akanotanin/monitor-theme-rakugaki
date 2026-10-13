@@ -4,20 +4,24 @@
 
 ## 字体
 
-`public/fonts/` 下的 7 个 woff2 是以下四款字体的**拉丁子集**（只打用到的那几档字重，共 7 个文件），随主题包分发（离线可用，
-不联 Google Fonts、也不依赖访客机器装了什么）。四款均为 SIL Open Font License 1.1（OFL-1.1），
-取自 Google Fonts 经 Fontsource 分发：
+`public/fonts/` 下的 12 个 woff2 是以下七款字体的**子集**（拉丁只打用到的字重；两枚中文子集只收界面用得到的字形），随主题包分发（离线可用，
+不联 Google Fonts、也不依赖访客机器装了什么）。七款均为 SIL Open Font License 1.1（OFL-1.1）；
+拉丁子集取自 Google Fonts 经 Fontsource 分发，两枚中文子集的来源与生成方式见下表与文末：
 
 | 字体 | 用途 | 版权声明 |
 | --- | --- | --- |
-| Newsreader | 标题（衬线） | Copyright 2020 The Newsreader Project Authors (http://github.com/productiontype/Newsreader) |
-| Instrument Sans | 正文 | Copyright 2022 The Instrument Sans Project Authors (https://github.com/Instrument/instrument-sans) |
+| Rakugaki Hand（子集，重命名自 LXGW Marker Gothic） | 标题・名称・强调・手写小注的汉字 | Copyright 2021-2026 The LXGW Marker Gothic Project Authors (https://github.com/lxgw/LxgwMarkerGothic) |
+| Rakugaki Kai（子集，重命名自 LXGW WenKai GB Screen） | 正文与小字的汉字 | Copyright 2021-2024 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)；Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee) |
+| Shantell Sans | 标题・名称・正文（手写感的无衬线） | Copyright 2022 The Shantell Sans Project Authors (https://github.com/arrowtype/shantell-sans) |
+| Newsreader | 标题（衬线；子集保留备用） | Copyright 2020 The Newsreader Project Authors (http://github.com/productiontype/Newsreader) |
+| Instrument Sans | 正文（子集保留备用） | Copyright 2022 The Instrument Sans Project Authors (https://github.com/Instrument/instrument-sans) |
 | JetBrains Mono | 数字读数（等宽） | Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono) |
 | Caveat | 手写小注 | Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat) |
 
-四款**均未声明 Reserved Font Name**，因此这些子集可以继续使用原字体名。中日韩字形不在包内
-（一套完整 CJK 字面有好几 MB），由访客系统的黑体／宋体／楷体承担——字体栈写在
-`src/index.css` 的 `--family-*` 里。
+七款**均未声明 Reserved Font Name**；两枚中文子集仍改为 Rakugaki Hand / Rakugaki Kai 分发，
+避免与上游完整字面混淆（上游版权与许可声明保留在字体内部）。中文子集由
+`tools/make_cjk_subset.py` 生成：字符集 = 仓库文本 + `tools/cjk-extra.txt`（当前 1519 字），
+集外汉字仍由访客系统字体兜底——字体栈写在 `src/index.css` 的 `--family-*` 里。
 
 ## 视觉参考
 
@@ -25,7 +29,7 @@
 [cc-router](https://ccrouter.app/)（MIT）的官网与桌面端风格。**参考的是观感，不是代码**：
 本主题的组件、样式与逻辑都写在本仓库里，与该项目没有代码往来。
 
-## 许可全文（OFL-1.1，上述四款字体共用）
+## 许可全文（OFL-1.1，上述七款字体共用）
 
 ```
 -----------------------------------------------------------

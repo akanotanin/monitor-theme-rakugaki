@@ -2,7 +2,7 @@
   "name": "rakugaki",
   "short": "rakugaki",
   "description": "极简探针（Monitor）的手绘纸感主题：五种卡片形态、节点地球、分组筛选、明暗双色。",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-rakugaki",
   "config": [
@@ -54,11 +54,11 @@
       "type": "select",
       "key": "cardStyle",
       "label": "卡片形态",
-      "default": "plain",
+      "default": "latency",
       "options": [
         {
           "value": "classic",
-          "label": "经典：网络速率与总量分两行，延迟收在右上角浮层里"
+          "label": "经典：网络速率与总量分两行（2×2 四格），不含延迟"
         },
         {
           "value": "plain",

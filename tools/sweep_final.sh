@@ -3,10 +3,14 @@
 cd "$(dirname "$0")/.." || exit 1
 OUT="shots/sweep-final.txt"
 : > "$OUT"
+# verify_icons / verify_farm_entry 默认都要 5199（与 serve.mjs 同号）：本机只要别的会话留着一个 serve
+# 占着它，这两支就 EADDRINUSE 直接退出、连摘要行都不打 —— sweep 里只显示「没抓到结果行」这种静默假红。
+# 统一给它们错开端口（两支各自认 FARM_PORT / ICON_PORT，其余工具忽略这两个变量）。
+export FARM_PORT=5899 ICON_PORT=5898
 for t in verify_globe_colors verify_globe_coverage verify_globe_land verify_globe_spin \
          verify_appearance verify_icons verify_touch_targets verify_footer_credit \
          verify_search verify_detail_charts verify_title verify_farm_entry \
-         verify_latency_range verify_peek_latency verify_detail_preload \
+         verify_latency_range verify_peek_retired verify_detail_preload \
          verify_public_remark verify_card_style_menu verify_card_styles \
          verify_compact_notes verify_globe_layout verify_summary verify_globe \
          verify_globe_scale verify_offline_time verify_visibility \

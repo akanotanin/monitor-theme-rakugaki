@@ -29,7 +29,7 @@ const OUT = process.argv[2] || 'shots/card-style'
 const PORT = 5203
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
 
-// 站长的设置（每个场景换一次）。默认档是 plain —— 与 DEFAULTS 一致。
+// 站长的设置（每个场景换一次）。起点挑 plain 只是场景选择，与出厂默认档无关（默认 2026-10-14 起是 latency）。
 let CONFIG = { cardStyle: 'plain' }
 // 桩服务器数着：非 GET 的 /api 请求（= 谁想写 hub）与延迟请求（LatencyPanel 要有数据才会画）。
 let writes = []
@@ -262,7 +262,7 @@ for (const style of ['classic', 'plain', 'latency', 'detailed', 'compact']) {
     shapeOk(s, style), shapeWhy(s))
   check('  点完菜单自己收起', s.menu === false && s.toggle?.expanded === 'false')
   // ★ 选成与站长设置相同的那一档时**记录要被删掉**（= 重新"跟着站长走"，见下面第四段）：
-  //   这一轮站长的默认是「简约」，所以点「简约」时留 null 才是对的。
+  //   这一段场景里站长的设置就是「简约」（CONFIG 钉的），所以点「简约」时留 null 才是对的。
   const expectStored = style === CONFIG.cardStyle ? null : style
   check('  记录只进访客自己的浏览器' + (style === CONFIG.cardStyle ? '（选成站长那档 → 记录删掉）' : ''), s.stored === expectStored, `${s.stored}`)
   check('  ★ hub 一个字节都没写（非 GET 的 /api 请求数 = 0）', writes.length === 0, writes.join(' | '))

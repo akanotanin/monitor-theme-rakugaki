@@ -284,6 +284,7 @@ const PLAIN_PROBE = `JSON.stringify((() => {
     return { rgb: 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')', alpha: +(d[3] / 255).toFixed(3) }
   }
   const fillRaw = bar && bar.firstElementChild ? cs(bar.firstElementChild).backgroundColor : null
+  const fillClip = bar && bar.firstElementChild ? cs(bar.firstElementChild).clipPath : null
   // ★ 颜色一律**用 canvas 合成成 sRGB 之后再比**：本站的 token 是 color-mix()，拿正则去抠数字
   //   会得到垃圾；卡片本身的 background 还常常是透明的，得先合成到页面底上才是访客看到的那一层。
   const bodyBg = getComputedStyle(document.body).backgroundColor
@@ -299,6 +300,7 @@ const PLAIN_PROBE = `JSON.stringify((() => {
     cardBg: cardEff,
     fillColor: fillRaw,
     fillAlpha: fillRaw ? paint(null, fillRaw).alpha : null,
+    fillClip,
     fillComposite: fillRaw ? paint(cardEff, fillRaw).rgb : null,
     pctComposite: row && row.lastElementChild ? paint(cardEff, cs(row.lastElementChild).color).rgb : null,
     footColor: foot ? cs(foot).color : null,
@@ -406,8 +408,9 @@ let classicStyle = null
   check('经典：速率那行是墨色、箭头弱化；总量那行整格弱化',
     dom.netG.arrowColor !== dom.netG.rateColor && dom.netG.totalColor === dom.netG.arrowColor,
     JSON.stringify({ arrow: dom.netG.arrowColor, rate: dom.netG.rateColor, total: dom.netG.totalColor }))
-  check('经典：四格上面是那条手画虚线、间距 mt/pt 16px、12px 字号',
-    dom.netG.mt === '16px' && dom.netG.pt === '16px' && dom.netG.fs === '12px'
+  // ★ 2026-10-14：读数层容器查询（index.css）——4 列窄卡里整层压到 11px，宽卡仍是 12px。
+  check('经典：四格上面是那条手画虚线、间距 mt/pt 16px、字号 11px（4 列窄卡里容器查询压的一档）',
+    dom.netG.mt === '16px' && dom.netG.pt === '16px' && dom.netG.fs === '11px'
     && dom.netG.borderStyle === 'dashed' && parseFloat(dom.netG.border) >= 1,
     JSON.stringify({ mt: dom.netG.mt, pt: dom.netG.pt, fs: dom.netG.fs, border: dom.netG.border, style: dom.netG.borderStyle }))
   check('经典：四格都没有被截断（等宽读数在 4 列下也装得下）', dom.netG.clipped.length === 0,
@@ -418,15 +421,18 @@ let classicStyle = null
   check('经典：网格保留 xl 四列', dom.grid.includes('xl:grid-cols-4'), dom.grid)
   check('经典：标签与底注同为弱化灰（标签没被提亮）',
     classicStyle.labelColor === classicStyle.footColor, `${classicStyle.labelColor} vs ${classicStyle.footColor}`)
-  check('经典：条 10px、底注 12px、格行距 16px',
-    classicStyle.barH === '10px' && classicStyle.footSize === '12px' && classicStyle.rowGap === '16px',
+  check('经典：条 10px、底注 11px（4 列窄卡里容器查询压的一档；宽卡仍 12px）、格行距 16px',
+    classicStyle.barH === '10px' && classicStyle.footSize === '11px' && classicStyle.rowGap === '16px',
     JSON.stringify({ barH: classicStyle.barH, footSize: classicStyle.footSize, rowGap: classicStyle.rowGap }))
+  // ★ 2026-10-14 第二刀：填色 70%→62%（6.9:1→5.2:1）+ 右端毛边收笔（站长：直切填充与手绘外壳不搭）。
   // ★ 2026-10-09：与主主题同步「进度条减重」—— 填色不再是纯墨（纯墨＝卡片上最重的一笔）。
   //   下面两条把「填色带透明度」与「有效对比落在 3.5–8:1、且轻于正文」钉住：下限 3.5 是
   //   图形可读的底线（WCAG 非文本 3:1），上限 8 表示必须明显轻于正文。判据量的是**有效颜色**
   //   （alpha 合成到卡片底之后），不是 fillStyle 里的那个值。改坏任一条都会红。
   check('★ 经典：进度条填色不再是纯墨色（纯墨＝卡片上最重的一笔）',
     classicStyle.fillAlpha !== null && classicStyle.fillAlpha < 1, `alpha=${classicStyle.fillAlpha}｜${classicStyle.fillColor}`)
+  check('★ 经典：填色右端是毛边收笔（不是数字化的直切）',
+    !!classicStyle.fillClip && classicStyle.fillClip !== 'none', classicStyle.fillClip)
   check('★ 经典：进度条的有效对比度落在「轻于正文、又清楚看得见」的 3.5–8:1',
     contrast(classicStyle.fillComposite, classicStyle.cardBg) >= 3.5 &&
     contrast(classicStyle.fillComposite, classicStyle.cardBg) <= 8 &&
@@ -437,7 +443,7 @@ let classicStyle = null
     JSON.stringify({ b: classicStyle.cardBorder, s: classicStyle.cardShadow }))
 }
 
-/* 1b) 简约（新档、1.1.0 起的默认）：与经典同一个骨架、同一批读数，只换一套视觉处理 */
+/* 1b) 简约（2026-10-14 前是默认档）：与经典同一个骨架、同一批读数，只换一套视觉处理 */
 {
   const { dom, ping } = await render({ cardStyle: 'plain', listTop: 'none' }, 'plain')
   const s = JSON.parse(await evalJS(PLAIN_PROBE))
@@ -450,8 +456,8 @@ let classicStyle = null
     && /↓/.test(dom.net.text) && /↑/.test(dom.net.text) && !/·/.test(dom.net.text),
     JSON.stringify({ n: dom.net?.children, justify: dom.net?.justify, svg: dom.net?.svg, text: dom.net?.text }))
   // ★ 这一条是「两端各自被截成 ↓ … ↑ …」那个静默缺陷的护栏：文本断言看不见截断（innerText 仍是全量），
-  // 只有 scrollWidth > clientWidth 才算数。rakugaki 的等宽读数比 jikasei 宽四成，所以那行**必须**允许折行
-  // （flex-wrap）：4 列下折成两行，3 列及更宽仍是一行。
+  // 只有 scrollWidth > clientWidth 才算数。flex-wrap 保留为深兜底；实际单行由 index.css 的容器查询保证
+  // （窄卡 ≤288px 时读数层 11px + 字距 -1px），逐宽度的折行/字号边界另见 verify_card_netrow_fit.mjs。
   check('简约：那行允许折行、两段都没被截断（窄卡片下不出现「↑ 2.3 …」）',
     dom.net.wrap === 'wrap' && dom.net.clipped.length === 0, `wrap=${dom.net.wrap}｜${JSON.stringify(dom.net.clipped)}`)
   check('简约：不发延迟请求（这一档与经典一样不含三网延迟）', ping === 0, `实测 ${ping} 次`)
@@ -476,10 +482,11 @@ let classicStyle = null
     `填色 ${contrast(s.fillComposite, s.cardBg)}:1（${s.fillComposite}）｜ 正文 ${contrast(s.pctComposite, s.cardBg)}:1（${s.pctComposite}）｜ 卡底 ${s.cardBg}`)
   check('简约：底注降到 11px', s.footSize === '11px', s.footSize)
   check('简约：读数格行距收紧到 12px（经典 16px）', s.rowGap === '12px', s.rowGap)
-  // 名字这一档在 rakugaki 里**不动**：包里只随附 Newsreader 的 600 一档（见 FONTS.md），
+  // 名字这一档在 rakugaki 里**不动**：每个展示字体只在包里带一档（现在是 Shantell Sans 600，
+  // 见 FONTS.md；Newsreader 的子集与声明留作回退备用），
   // 经典/简约/延迟/详细共用一个字体栈，所以 jikasei 那条「名字加粗一档」在这里没有对应物。
   check('简约：名字仍是展示字体 600（本主题只随包一档字重，两档一致）',
-    s.nameWeight === '600' && s.nameWeight === classicStyle.nameWeight && /Newsreader/.test(s.nameFamily),
+    s.nameWeight === '600' && s.nameWeight === classicStyle.nameWeight && /Shantell Sans/.test(s.nameFamily),
     JSON.stringify({ plain: s.nameWeight, classic: classicStyle.nameWeight, family: s.nameFamily }))
   check('简约：皮肤层照旧（2px 墨线 + 6px 硬偏移影子）',
     s.cardBorder === '2px' && /6px 6px/.test(s.cardShadow), JSON.stringify({ b: s.cardBorder, sh: s.cardShadow }))
@@ -584,12 +591,15 @@ for (const [cfg, tag] of [[{}, 'empty'], [{ cardStyle: 'bogus' }, 'bogus']]) {
   const { dom, ping } = await render({ listTop: 'none', ...cfg }, tag)
   // 认不出的值要落到**出厂默认档**那一档的形状上（按 theme.json 现读的 default 分档断言，
   // 默认档换了这里跟着换，不会写成"只认某一档"）。
-  //   简约（现默认）/ 经典：底部那行在、无读数盒、不发延迟；详细：三枚读数盒 + 三网延迟块。
+  //   简约：底部那行在、无读数盒、不发延迟；经典：2×2 四格；延迟：底部那行在 + 三网延迟块
+  //   （每张卡各取一条线路请求）；详细：三枚读数盒 + 三网延迟块。
   const shape = DEFAULT_STYLE === 'detailed'
     ? dom.infoBox === 3 && dom.polylines === 3 * dom.cards && ping === 2
     : DEFAULT_STYLE === 'classic'
       ? dom.netGrid === 1 && dom.netRow === 0 && dom.infoBox === 0 && dom.polylines === 0 && ping === 0
-      : dom.netRow === 1 && dom.netGrid === 0 && dom.infoBox === 0 && ping === 0
+      : DEFAULT_STYLE === 'latency'
+        ? dom.netRow === 1 && dom.netGrid === 0 && dom.infoBox === 0 && dom.polylines === 3 * dom.cards && ping === 2
+        : dom.netRow === 1 && dom.netGrid === 0 && dom.infoBox === 0 && ping === 0
   check(`非法值 ${tag} → 回落出厂默认档「${DEFAULT_STYLE}」`, shape,
     `默认档 ${DEFAULT_STYLE} / 网络行 ${dom.netRow} / 四格 ${dom.netGrid} / polyline ${dom.polylines} / 盒 ${dom.infoBox} / 请求 ${ping}`)
 }

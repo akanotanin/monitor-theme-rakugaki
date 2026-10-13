@@ -16,6 +16,9 @@ dist-ssr
 /release/
 /shots/
 
+# 中文子集生成用的上游源字体缓存（几十 MB，不进仓库）
+/tools/.cjk-src/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

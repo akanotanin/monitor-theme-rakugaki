@@ -411,7 +411,7 @@ export function TimeChart({
         <button
           type="button"
           onClick={() => onZoom(0, last)}
-          className="tap tap-y-6 absolute top-0 right-1 rounded-md border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          className="tap tap-y-6 sk-chip absolute top-0 right-1 border-[1.5px] border-stroke bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
         >
           重置
         </button>

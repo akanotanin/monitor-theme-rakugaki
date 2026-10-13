@@ -21,7 +21,8 @@ import { summarize, type Fleet } from "@/lib/summary"
  * 两副面孔的数据都来自 `/api/nodes` 里本来就有的字段，开着它不会多发一个请求——唯一的
  * 例外是第四张下面那条走势线，它画的是访客打开页面之后自己攒下的实时速率（api.ts 的
  * `speedHistory`，每 2 秒一个采样、留最近 60 个 ≈ 2 分钟）：hub 没有「全站速率历史」
- * 这种接口，刷新页面就得重新攒，所以冷启动头几秒那里是空的。
+ * 这种接口，刷新页面就得重新攒——冷启动头几秒那个窗口不空着：一行手写小注
+ * （「正在记录网速走势…」）顶着，线画出来它退场。
  *
  * ★口径跟着分组标签走：传进来的是**当前分组筛选出的节点**（`group` 也跟着一起来，
  * 用来取那一条分组自己的速率走势线），与下面那批卡片是同一批机器。参考站（monitor 内置
@@ -100,7 +101,7 @@ function Block({ icon: Icon, title, hint, detail, children }: {
         //      块底，指针全程留在 Block 子树里，悬停不断；视觉上的缓冲由浮层自己的内边距兜着。
         //   ② 上限高 + 内部滚动写在 index.css 的 .budget-detail 里：min(24rem, 60vh) —— 近百行
         //      明细也在这一个浮层里滚着看，不会把浮层拖出屏幕。
-        <span data-budget-detail="" className="budget-detail absolute left-0 top-full z-20 block w-max max-w-[15rem] space-y-1 rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md">
+        <span data-budget-detail="" className="budget-detail sk-pop absolute left-0 top-full z-20 block w-max max-w-[15rem] space-y-1 px-2.5 py-2 text-xs">
           {detail}
         </span>
       )}
@@ -120,7 +121,7 @@ function BudgetDetail({ head, items, note }: { head: string; items: BudgetItem[]
           <span className="tnum shrink-0">≈{cny(item.amount)}</span>
         </span>
       ))}
-      <span className="block border-t pt-1 text-muted-foreground">{note}</span>
+      <span className="block border-t-[1.5px] border-dashed border-line-strong pt-1 text-muted-foreground">{note}</span>
     </>
   )
 }
@@ -240,19 +241,27 @@ const H = 28
 function Sparkline({ series }: { series: { rx: number; tx: number }[] }) {
   const ready = series.length > 1
   const max = Math.max(1, ...series.map((s) => Math.max(s.rx, s.tx)))
-  const line = (pick: (s: { rx: number; tx: number }) => number) =>
+  const min = series.length ? Math.min(...series.map((s) => Math.min(s.rx, s.tx))) : 0
+  // 稳态（两个方向几乎不动）时别贴着顶边画成一根"边框线"：两条都落到中线附近（rx 略上、tx 略下）。
+  const flat = max - min < max * 0.06
+  const line = (pick: (s: { rx: number; tx: number }) => number, offset: number) =>
     series
-      .map((s, i) => `${((i / (series.length - 1)) * W).toFixed(2)},${(H - 1 - (pick(s) / max) * (H - 2)).toFixed(2)}`)
+      .map((s, i) => `${((i / (series.length - 1)) * W).toFixed(2)},${flat ? H / 2 + offset : (H - 1 - (pick(s) / max) * (H - 2)).toFixed(2)}`)
       .join(" ")
   return (
-    <div className="mt-auto h-7 pt-4">
-      {ready && (
+    // 攒点期间（打开后头几秒）不留空窗：一行手写小注顶着这块预留位，线画出来它退场（高度不变）。
+    <div className={ready ? "mt-auto h-7 pt-4" : "mt-auto h-7"}>
+      {ready ? (
         <svg className="h-full w-full" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
           {/* 下行用前景色、上行用弱化灰：与卡片网络区那两个方向的读法一致
               （速率用前景色、累计用灰），深浅色下都跟着同一套变量走。 */}
-          <polyline points={line((s) => s.rx)} fill="none" strokeWidth={1} vectorEffect="non-scaling-stroke" className="stroke-foreground/70" />
-          <polyline points={line((s) => s.tx)} fill="none" strokeWidth={1} vectorEffect="non-scaling-stroke" className="stroke-muted-foreground/60" />
+          <polyline points={line((s) => s.rx, -1)} fill="none" strokeWidth={1} vectorEffect="non-scaling-stroke" className="stroke-foreground/70" />
+          <polyline points={line((s) => s.tx, 1)} fill="none" strokeWidth={1} vectorEffect="non-scaling-stroke" className="stroke-muted-foreground/60" />
         </svg>
+      ) : (
+        // 颜色走 .sk-hand 的 accent-ink（与「还没有节点」那类空态小注同一支笔）；
+        // 别再挂 text-muted-foreground——未分层的 .sk-hand 会把它压掉，写了是误导。
+        <p data-speed-note="" className="sk-hand flex h-full items-center justify-center text-[13px] leading-none">正在记录网速走势…</p>
       )}
     </div>
   )

@@ -82,9 +82,9 @@ const send = (m, p = {}) => new Promise((res) => { const i = ++id; pending.set(i
 const js = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result?.result?.value
 await send('Runtime.enable'); await send('Page.enable')
 await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1200, deviceScaleFactor: 1, mobile: false })
-// ★ 皮肤版差异（2026-10-10）：本主题的出厂默认卡片形态是「简约」，而「离线 N」只出现在
-//   「详细」档的卡面（MetaRow）——jikasei 的默认就是 detailed、原版不用设；这里先按访客
-//   偏好把卡片钉到 detailed 再开页（键名与 src/lib/theme-config.ts 的 CARD_STYLE_KEY 一致）。
+// ★ 皮肤版差异（2026-10-10，2026-10-14 改默认档后仍成立）：本主题的出厂默认卡片形态是
+//   「延迟」（此前是简约），而「离线 N」只出现在「详细」档的卡面（MetaRow）——所以这里先按
+//   访客偏好把卡片钉到 detailed 再开页（键名与 src/lib/theme-config.ts 的 CARD_STYLE_KEY 一致）。
 await send('Page.addScriptToEvaluateOnNewDocument', { source: "try{localStorage.setItem('rakugaki:card_style','detailed')}catch(e){}" })
 
 let pass = 0, fail = 0

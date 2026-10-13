@@ -13,12 +13,21 @@
 
 /* ------------------------------------------------------------------ 字体
    拉丁子集随主题包分发（离线可用：不联 Google Fonts、不依赖访客机器装了什么）。
-   中日韩字形不打包——一套完整 CJK 字面要好几 MB，主题包会从 5MB 涨到 30MB 以上，
-   而各家系统自带的黑体／宋体／楷体本来就够看，所以字体栈的后半段一律写系统字体：
-   拉丁走包里这三款，汉字落到 PingFang SC / 微软雅黑 / 楷体。
+   中文手写体走子集随包分发（全量 CJK 字面要几十 MB，这里只收用得到的字形，两枚合计
+   约 500KB）：字符集 = 仓库文本 + tools/cjk-extra.txt，由 tools/make_cjk_subset.py
+   从上游 OFL 字体生成（来源与许可见 FONTS.md）；集外汉字仍回落到系统字体。
 
-   四款各司其职：Newsreader（衬线，标题）／Instrument Sans（正文）／
-   JetBrains Mono（数字读数——小票上的那排等宽数字）／Caveat（手写小注）。 */
+   手写体的分工：标题・名称・强调 → Rakugaki Hand（马克笔感，霞鹜漫黑子集）；
+   正文与小字 → Rakugaki Kai（文楷，小字更稳，霞鹜文楷 Screen 子集）；
+   拉丁与数字 → Shantell Sans；手写小注（.sk-hand）→ Caveat + Rakugaki Hand；
+   数字读数（.tnum）→ Shantell Sans + Rakugaki Hand。
+   试用基线（2026-10-14）：Newsreader / Instrument Sans / JetBrains Mono 的子集与声明
+   暂时留着备用，回退只要换下面 --family-* 三行。 */
+@font-face { font-family: "Rakugaki Hand"; src: url("/fonts/rakugaki-hand.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; unicode-range: U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF, U+00B7, U+00D7, U+2190-2199, U+2248, U+2713, U+2715; }
+@font-face { font-family: "Rakugaki Kai"; src: url("/fonts/rakugaki-kai.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; unicode-range: U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF, U+00B7, U+00D7, U+2190-2199, U+2248, U+2713, U+2715; }
+@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-700-normal.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: "Newsreader"; src: url("/fonts/newsreader-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
 @font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
@@ -84,15 +93,16 @@
   /* 手绘波浪线：一条 10px 高的墨线，用 mask 重复成波浪（导航底边、区块分隔）。 */
   --squiggle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='10' viewBox='0 0 240 10'%3E%3Cpath d='M0 5 C 40 1, 80 9, 120 5 S 200 9, 240 5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
 
-  /* 字体栈：拉丁走包里那四款，汉字落到系统字体（见上面 @font-face 那段）。
+  /* 字体栈：拉丁走包里那几款，汉字走随包的中文手写体子集（见上面 @font-face 那段）。
      源变量另起名字（--family-*）再映射到 Tailwind 的 --font-* 命名空间——直接写
-     --font-* 会与 @theme 撞名，`@theme inline` 里再写一次就成了自己引用自己的死循环。 */
-  --family-display: "Newsreader", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, serif;
-  --family-sans: "Instrument Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+     --font-* 会与 @theme 撞名，`@theme inline` 里再写一次就成了自己引用自己的死循环。
+     行尾的系统字体是子集集外字的兜底。 */
+  --family-display: "Shantell Sans", "Rakugaki Hand", "Kaiti SC", "KaiTi", "STKaiti", "AR PL UKai CN", cursive, sans-serif;
+  --family-sans: "Shantell Sans", "Rakugaki Kai", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Noto Sans SC", system-ui, -apple-system, sans-serif;
   --family-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "Sarasa Mono SC", "Microsoft YaHei UI", monospace;
-  /* 手写体只用于「手写小注」那一层：拉丁走 Caveat，汉字落到系统的楷体（Windows 的
-     楷体／macOS、iOS 的 Kaiti SC），两边都读得出这是「手写的」。 */
-  --font-hand: "Caveat", "Kaiti SC", "KaiTi", "STKaiti", "AR PL UKai CN", cursive;
+  /* 手写小注（.sk-hand）那一层：拉丁走 Caveat，汉字走 Rakugaki Hand（随包，跨端一致），
+     再往后才是系统楷体兜底。 */
+  --font-hand: "Caveat", "Rakugaki Hand", "Kaiti SC", "KaiTi", "STKaiti", "AR PL UKai CN", cursive;
 
   --radius: 0.625rem;
   --background: var(--paper);
@@ -273,7 +283,9 @@
 
 /* 等宽数字让每两秒刷一次的数字不左右跳；顺带把「读数」这一层变成小票上的那排等宽字
    （JetBrains Mono），汉字落到系统黑体。 */
-.tnum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* 数字读数：数字与单位走手写体（Shantell 的数字 + Rakugaki Hand 的汉字单位），
+   等宽对齐靠 tabular-nums；不再走 JetBrains Mono（声明留着备用）。 */
+.tnum { font-family: "Shantell Sans", "Rakugaki Hand", ui-monospace, SFMono-Regular, Menlo, "Sarasa Mono SC", "Microsoft YaHei UI", monospace; font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------------- 手绘元素（本主题的底子）
    这一层刻意**不放进 @layer**：未分层规则在层叠顺序上高于 Tailwind 的分层工具类，
@@ -304,6 +316,19 @@
 /* 可点的卡片：悬停时轻轻歪一下、抬起来一点——纸片被捏起来的感觉。 */
 .sk-lift:hover { transform: translate(-1px, -1px) rotate(-.6deg); border-color: var(--accent-2); }
 .sk-lift:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+
+/* 窄卡里的读数层整体降一档（容器查询，内容盒 ≤288px 时生效）。
+   12px 下最坏形状（↓ 999.9 KB/s ↑ 999.9 KB/s ＋ ↓ 999.9 GB ↑ 999.9 GB）需宽 ~287px，
+   而 4 列桌面卡里只有 259-263px、最窄两列 247px——2026-10-14 站长截图正是这个临界带：
+   同一屏里有的卡折行、有的不折（各卡内容宽度恰好在可用宽两侧）。把整层降到 11px +
+   字距 -1px 后最坏需宽 ~253px，4 列与窄两列一律单行，脚注也不再截断。
+   <640 视口那种连 11px 都放不下的极端读数仍回落折行（设计上留的兜底，不动）。
+   注意：容器查询量的是内容盒——卡片的 2×16px 内边距不计入，288 对的就是那 259-263 档。 */
+[data-card-style] .sk-card { container-type: inline-size; }
+@container (max-width: 288px) {
+  .tnum { font-size: 11px; word-spacing: -1px; }
+}
+
 
 /* 按钮：歪圆角 + 2px 墨线。悬停往左上挪 1px 并长出一枚硬影子，按下再压回去。
    ★这里**不写 background**：底色由调用处的工具类给（bg-primary / bg-destructive /
@@ -358,7 +383,13 @@
   background: var(--paper-warm);
   overflow: hidden;
 }
-.sk-bar-fill { background: color-mix(in srgb, var(--stroke) 70%, transparent); transition: width .5s ease; }
+.sk-bar-fill {
+  background: color-mix(in srgb, var(--stroke) 62%, transparent);
+  transition: width .5s ease;
+  /* 右端不是数字化的直切：一记「收笔」毛边（固定形状、随宽度走）——与手绘外框同一支笔。
+     2026-10-14 站长截图：「填充直切、与手绘外壳不搭」；同刀把对比度 6.9:1 收到 5.2:1（护栏带 3.5-8:1）。 */
+  clip-path: polygon(0 0, 100% 0, calc(100% - 2.5px) 42%, calc(100% - 1px) 72%, calc(100% - 2px) 100%, 0 100%);
+}
 /* 流量条是唯一一条会用完的额度：超过 80% 转成陶土橙，提醒该看一眼了。
    其余三条（CPU / 内存 / 硬盘）保持纯墨色——它们的「满」与额度不同义。 */
 .sk-bar-hot .sk-bar-fill { background: var(--accent-2); }
@@ -392,6 +423,51 @@
   color: var(--popover-foreground);
   box-shadow: var(--shadow-pop);
 }
+
+/* 附在元素上的悬停浮层（预算明细、卡片备注与标题提示、详情页标签）：与 .card-style-menu、
+   图表 tooltip 同一副纸感——2px 墨线 + 歪圆角 + 不糊边的硬影子。
+   （2026-10-14：此前这几处是默认的 1px 浅边 + 8px 圆角 + 柔影，站长截图报「与主题风格不统一」。）
+   ★与 .sk-chip 同理：这里写死的 border / border-radius / background / box-shadow 是未分层规则，
+   会压过调用处的工具类——调用处就不要再写 border-* / rounded-* / shadow-* 了。 */
+.sk-pop {
+  border: 2px solid var(--stroke);
+  border-radius: var(--r-chip);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-pop);
+}
+
+/* 手绘小方框复选框（详情页「削峰」）：抹掉原生外观，画成墨线歪角小方框 + 手写勾；
+   选中填 butter。原生 input 语义保留（label 关联、键盘、读屏都不动）。
+   （2026-10-14：此前是浏览器原生方框，在一排手绘贴纸里像"没擦到"的组件。） */
+.sk-check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  border: 2px solid var(--stroke);
+  border-radius: 3px 6px 4px 8px / 7px 3px 8px 4px;
+  background: var(--card);
+  cursor: pointer;
+  transition: background-color .15s ease, transform .15s ease;
+}
+.sk-check:hover { transform: rotate(-3deg); }
+.sk-check::after {
+  content: "";
+  width: 6px;
+  height: 3.5px;
+  border-left: 1.7px solid var(--ink);
+  border-bottom: 1.5px solid var(--ink);
+  transform: translateY(-1px) rotate(-52deg) scale(0);
+  transition: transform .12s ease;
+}
+.sk-check:checked { background: var(--fill-butter); }
+.sk-check:checked::after { transform: translateY(-1px) rotate(-48deg) scale(1); }
+.sk-check:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 /* 手写小注（空状态、「剩余价值」那类口径提示）。 */
 .sk-hand { font-family: var(--font-hand); color: var(--accent-ink); }
@@ -471,7 +547,7 @@
    文字仍然读得出来。 */
 .globe-label {
   fill: var(--muted-foreground);
-  font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", "Rakugaki Kai", monospace;
   font-size: 9.35px;
   stroke: var(--card);
   stroke-width: 3;
@@ -480,7 +556,7 @@
 }
 .globe-caption {
   fill: var(--muted-foreground);
-  font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", "Rakugaki Kai", monospace;
   font-size: 8.8px;
   letter-spacing: 1.4px;
   opacity: 0.55;

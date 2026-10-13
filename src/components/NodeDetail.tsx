@@ -5,7 +5,7 @@ import { Check, Copy, Info } from "lucide-react"
 import { TimeChart } from "@/components/Chart"
 import { PingTooltip } from "@/components/ChartTooltip"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Country, deployed, offlineSeconds, RemarkChips } from "@/components/NodeCard"
+import { Country, cycleText, deployed, expiryText, offlineSeconds, priceText, RemarkChips } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
 import {
   axisBytes, axisTop, bytes, despike, cpuName, osName, rate, uptime,
@@ -13,6 +13,14 @@ import {
 import { hasDetailRemarks, remarkChips } from "@/lib/notes"
 import { remarksOnCards, type RemarkPlacement } from "@/lib/site-settings"
 import { rangesFor } from "@/lib/ranges"
+
+/** 「计费」那一格的口径：价格 + 周期（与「详细」档第二行同一口径）；没记价格时返回 null（不占格）。 */
+const billingText = (node: Node) => {
+  const price = priceText(node)
+  if (!price) return null
+  const cycle = cycleText(node)
+  return cycle ? `${price} / ${cycle}` : price
+}
 
 type Point = {
   ts: number
@@ -381,9 +389,12 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
             .join(" · ")}
         />
         <Fact label="今日流量" value={`↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}`} />
-        {/* 最后一格是「在线时间」：取代原先标题行上那枚状态徽章。它顶掉的是「续费」
-            那一格——公开页的访客关心这台机器还活着多久，价格与到期在后台看。 */}
+        {/* 「在线时间」取代了原先标题行上那枚状态徽章。 */}
         <Fact label="在线时间" value={onlineFor(node)} />
+        {/* 计费与到期（2026-10-14 站长要求回到详情页）：经典/延迟两档的 ⓘ 悬浮层退役后，
+            价格与到期以这两格为准；没记价格时「计费」不占格，「到期」缺省写「无期限」。 */}
+        <Fact label="计费" value={billingText(node)} />
+        <Fact label="到期" value={expiryText(node) ?? "无期限"} />
       </dl>
 
       {/* 整页详情那一块备注：**私有 + 公有合并成一串小卡片**（私有在前、带锁与描边 = 仅自己可见）。
@@ -428,7 +439,7 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
                 type="checkbox"
                 checked={smooth}
                 onChange={(e) => setSmooth(e.target.checked)}
-                className="accent-primary"
+                className="sk-check"
               />
               削峰
             </label>
@@ -474,7 +485,7 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
                       <span
                         data-note-panel
                         role="tooltip"
-                        className="absolute top-5 right-0 z-20 flex w-max max-w-[16rem] flex-wrap gap-1 rounded-md border bg-popover px-2 py-1.5 text-xs shadow-md"
+                        className="sk-pop absolute top-5 right-0 z-20 flex w-max max-w-[16rem] flex-wrap gap-1 px-2 py-1.5 text-xs"
                       >
                         <RemarkChips chips={cardChips} />
                       </span>

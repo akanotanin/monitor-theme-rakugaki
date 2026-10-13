@@ -179,7 +179,7 @@ async function facts() {
 if (HUB_MODE) {
   // hub 模式：形态由 hub 上存的站点配置决定（不是本脚本桩的），所以只拍它当前的样子。
   const cfg = await (await fetch(`${UPSTREAM}/api/themes/${SHORT}/config`)).json()
-  const style = cfg.cardStyle || '(默认：简约)'
+  const style = cfg.cardStyle || '(默认：延迟)'
   console.log(`
 hub 上存的站点配置：${JSON.stringify(cfg)} → 形态 ${style}`)
   await go(style, `hub-list-${style}`, { h: 1000 })

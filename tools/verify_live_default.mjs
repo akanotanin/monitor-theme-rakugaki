@@ -1,10 +1,10 @@
 // 现网验收「卡片形态的出厂默认档」：全新 profile 打开真站，分三趟测同一份线上产物——
 //   ① 把主题设置接口打桩成 `{}`（= 从没保存过这一格的站）→ 渲染的必须是**出厂默认档**的形状
-//      （现为简约：每张卡片底部一根 `data-net="row"` 的网络行、没有 `data-net="grid"` 的四格）；
+//      （2026-10-14 起是延迟：每张卡片底部一根 `data-net="row"` 的网络行、没有 `data-net="grid"`
+//      的四格，且带三网延迟块 `[data-latency]`、每张卡各取一条 `metrics` 请求）；
 //   ② 真配置（访客现在看到的样子）→ 也应落在同一档上；
-//   ③ 对照组：打桩成 `{"cardStyle":"classic"}` → 必须变成 2×2 四格。
+//   ③ 对照组：打桩成 `{"cardStyle":"classic"}` → 必须变成 2×2 四格、且一条延迟请求都不发。
 // ③ 才是这脚本的关键：它证明拦截真的生效、渲染真的跟着配置走，于是 ① 的结论才不是「反正都一样」。
-// 三档都顺带断「不发延迟（`/api/nodes/<id>/metrics`）请求」。
 //
 // 为什么不能只比线上文件哈希：哈希只能证明「伺服的就是我构建的那块」，
 // 证明不了「那块在浏览器里真的渲染成默认档」——默认值是在代码与 theme.json 两处表达的。
@@ -17,8 +17,9 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 const SITE = (process.argv[2] || '').replace(/\/$/, '')
 if (!SITE) { console.error('用法：node tools/verify_live_default.mjs <站点URL> [期望的形态值]'); process.exit(2) }
-const WANT = process.argv[3] || 'plain'
+const WANT = process.argv[3] || 'latency'
 const ROW_STYLES = ['plain', 'latency'] // 底部「一行两段」的那两档；classic / detailed / compact 都不是
+const PING_STYLES = ['latency', 'detailed'] // 卡面自带三网延迟、每张卡各取一条 ping 请求的两档
 const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
 const PORT = 9800 + Math.floor(Math.random() * 90)
 
@@ -67,6 +68,7 @@ const PROBE = `JSON.stringify((() => {
     cards: cards.length,
     netRow: document.querySelectorAll('[data-net="row"]').length,
     netGrid: document.querySelectorAll('[data-net="grid"]').length,
+    latencyRows: document.querySelectorAll('[data-latency] [data-probe-name]').length,
     infoBox: document.querySelectorAll('[data-slot="card"] [data-slot="card"]').length,
     text: cards[0] ? cards[0].innerText.replace(/\\n/g, ' | ') : '',
   }
@@ -108,7 +110,11 @@ for (const p of PASSES) {
   const got = shapeOf(dom)
   const wantShape = ROW_STYLES.includes(p.want) ? 'row' : 'grid'
   check(`${p.label}：渲染成「${p.want}」的形状（期望 ${wantShape}）`, got === wantShape, `实测 ${got}`)
-  check(`${p.label}：这一档不发延迟请求`, metric === 0, `实测 ${metric} 次`)
+  const wantPing = PING_STYLES.includes(p.want) ? dom.cards : 0
+  check(`${p.label}：延迟请求数按档位（${p.want} 期望 ${wantPing} 次 = 每张卡一条）`, metric === wantPing, `实测 ${metric} 次`)
+  if (PING_STYLES.includes(p.want)) {
+    check(`${p.label}：三网延迟块在（每张卡三条线路）`, dom.latencyRows === 3 * dom.cards, `线路行 ${dom.latencyRows} / 卡 ${dom.cards}`)
+  }
   if (p.stub) check(`${p.label}：打桩真的命中了主题设置接口（否则测的是服务器上那份配置）`, hits === 1, `命中 ${hits} 次`)
 }
 console.log(`\n结果: PASS ${pass} / FAIL ${fail}`)
