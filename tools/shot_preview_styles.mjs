@@ -1,5 +1,5 @@
 // 拍 README 画廊里那五张「卡片形态」预览图（preview-plain / -classic / -latency / -detailed / -compact）。
-// 面板缩略图是 preview.png（另拍），地球与手机那几张是 tools/shot_preview_set.mjs。
+// 面板缩略图是 preview.png（tools/shot_preview_panel.mjs 另拍），地球与手机那几张是 tools/shot_preview_set.mjs。
 //
 // 用法：node tools/shot_preview_styles.mjs [nodes.json=tools/globe-nodes-fixture.json] [输出目录=.]
 //
