@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExtern
 import { Globe as GlobeIcon, Moon, Sun, Wrench } from "lucide-react"
 
 import { CardStyleMenu } from "@/components/CardStyleMenu"
-import { NodeCard } from "@/components/NodeCard"
+import { NodeCard, priceText } from "@/components/NodeCard"
 import { CompactList } from "@/components/CompactList"
 import { Globe } from "@/components/Globe"
 import { SearchBox, SearchRow } from "@/components/SearchBox"
@@ -50,15 +50,23 @@ const NodeDetail = lazy(loadDetail)
  *
  * 尺寸不另立一套，全跟着详情页自己那几块的类走：`dt` text-xs(16) + `dd` text-sm(20)、
  * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、四张图之间 space-y-5、
- * 规格格那层用同一套 grid 断点。于是手机上（一列六行）与桌面上（三列两行）都自动对上。
+ * 规格格那层用同一套 grid 断点。于是手机上（一列）与桌面上（三列）都自动对上。
  *
- * ★两处「差一块就差 46px」的地方（2026-10-06 跟 jikasei 同一处修，护栏 verify_detail_preload 一直在红）：
+ * ★三处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
  *   ① **备注块**（22px）—— 真实页里那台机器有备注才占位，所以这里得按 `hasRemarks` 判一次，
- *      不能无条件画（没备注的机器会反过来高出 38px）；
+ *      不能无条件画（没备注的机器会反过来高出 38px）；（2026-10-06 修）
  *   ② **四张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
- *      整页少 8px。①+② = 22+16+8 = 46px，正是那 46px 的差额。
+ *      整页少 8px。①+② = 22+16+8 = 46px，正是那 46px 的差额；（2026-10-06 修）
+ *   ③ **TCP/UDP 连接数两格**（2026-10-15 修，与 jikasei 同步）—— 详情页 2026-10-14 加了这两格
+ *      （真实页 +2 格），骨架没跟：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。
+ *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画这两格（离线机器
+ *      两格隐身、真实页也隐身）。
+ *   ④ **计费/到期两格**（2026-10-15 修，本皮肤独有）—— 2026-10-14 悬浮层退役时把「计费/到期」
+ *      挪进了详情页（jikasei 没有这两格），骨架同样没跟。判法照 `billingText` 的同源谓词：
+ *      「到期」永远在（缺省写「无期限」）、「计费」按 `priceText(node)` 判（没记价格不占格）。
+ *      —— ③④ 都照 ① 的同一手法由调用方传入。
  */
-function DetailSkeleton({ hasRemarks = false }: { hasRemarks?: boolean }) {
+function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling = false }: { hasRemarks?: boolean; hasConnections?: boolean; hasBilling?: boolean }) {
   return (
     <div className="detail-skeleton space-y-4" aria-busy="true">
       <div className="flex items-center gap-2">
@@ -66,7 +74,8 @@ function DetailSkeleton({ hasRemarks = false }: { hasRemarks?: boolean }) {
         <Skeleton className="h-7 w-44" />
       </div>
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
+        {/* 格数 = 6 基础 + 1 到期 + （metrics ? TCP/UDP 两格）+ （有价格 ? 计费一格）——见上面 ★③④。 */}
+        {[...Array(7 + (hasConnections ? 2 : 0) + (hasBilling ? 1 : 0)).keys()].map((i) => (
           <div key={i} className="min-w-0">
             <Skeleton className="h-4 w-12" />
             <Skeleton className="h-5 w-28" />
@@ -596,7 +605,7 @@ export default function App() {
           !nodes ? (
             <DetailSkeleton />
           ) : selected ? (
-            <Suspense fallback={<DetailSkeleton hasRemarks={hasDetailRemarks(selected, config.remarkPlacement)} />}>
+            <Suspense fallback={<DetailSkeleton hasRemarks={hasDetailRemarks(selected, config.remarkPlacement)} hasConnections={!!selected.metrics} hasBilling={!!priceText(selected)} />}>
               {/* 整页详情与紧凑展开里是同一个组件：保留天数也要一起给它，
                   否则「展开里有 30 天、点进去只有 7 天」会显得不一致。 */}
               <NodeDetail node={selected} historyDays={me.history_days} remarkPlacement={config.remarkPlacement} />

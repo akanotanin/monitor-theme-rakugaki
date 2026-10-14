@@ -414,8 +414,9 @@ export function NodeCard({ node, onOpen, onOpenLatency, onWarm, latencyLines, ca
                   它自己的 border-t 把「用量格」与「速率·总量」分开；三网延迟那条线由
                   LatencyPanel 自己画在下面。 */}
               {netRow}
-              {/* 三网延迟：每条线路一行，数据来自 hub 的 ping 历史（详见 Latency.tsx）。 */}
-              <LatencyPanel node={node} lines={latencyLines} onOpen={onOpenLatency} />
+              {/* 三网延迟：每条线路一行，数据来自 hub 的 ping 历史（详见 Latency.tsx）。
+                  延迟档走自适应版式；详细档不带 adaptive、保持固定列原样（与 jikasei 同口径）。 */}
+              <LatencyPanel node={node} lines={latencyLines} onOpen={onOpenLatency} adaptive />
             </>
           ) : (
             <>

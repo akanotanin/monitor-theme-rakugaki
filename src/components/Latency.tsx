@@ -125,10 +125,13 @@ const toneClass = (tone: Tone) =>
 const SPARK_W = 100
 const SPARK_H = 20
 
-/** 走势线：无坐标轴、无交互，只把这一小时的起伏画出来；断点照断，不连桥。 */
+/** 走势线：无坐标轴、无交互，只把这一小时的起伏画出来；断点照断，不连桥。
+    ★w-full：svg 是替换元素，做 grid 项时默认的 stretch 不会把它撑满轨道（会停在
+    viewBox 比例推出来的固有宽）——显式 width:100% 拿足整条轨道；flex 那处不受影响
+    （flex-1 的 basis 是 0%，flex 布局主轴上宽度声明不参与定尺）。 */
 function Sparkline({ values, className }: { values: Array<number | null>; className: string }) {
   const nums = values.filter((v): v is number => v !== null)
-  if (nums.length < 2) return <span className="min-w-0 flex-1" />
+  if (nums.length < 2) return <span className="w-full min-w-0 flex-1" />
   const min = Math.min(...nums)
   const max = Math.max(...nums)
   // 「最近视距」下限：与详情页自动量程共用一个常数（见 Chart.tsx）——窄量程不往死里放，
@@ -151,7 +154,7 @@ function Sparkline({ values, className }: { values: Array<number | null>; classN
     <svg
       viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
       preserveAspectRatio="none"
-      className={`h-4 min-w-0 flex-1 ${className}`}
+      className={`h-4 w-full min-w-0 flex-1 ${className}`}
       aria-hidden="true"
     >
       {segments.map((points, i) => (
@@ -202,14 +205,26 @@ function pickRows(probes: Probe[] | null, lines: string): Probe[] {
  * 创意项）。行 hover 时线路名从弱化灰提亮，作为「这里能点」的提示（与整卡可点不冲突：
  * 行级点击先 `stopPropagation`，否则会走整卡那条「默认页签」的路）。
  */
-export function LatencyPanel({ node, lines, onOpen }: { node: Node; lines: string; onOpen?: () => void }) {
+export function LatencyPanel({ node, lines, onOpen, adaptive = false }: { node: Node; lines: string; onOpen?: () => void; adaptive?: boolean }) {
   const probes = useNodePing(node.id)
   const rows = useMemo(() => pickRows(probes, lines), [probes, lines])
   if (rows.length === 0) return null
+  // ★版式分档（与 jikasei 同一口径，2026-10-15 同步；别再合并成一套）：
+  //  · **延迟档（adaptive）**：名字/数值列按内容自适应，上限沿用旧口径（名字最宽 80px、超了
+  //    截断 + title 悬停看全；丢包列仍固定 40px 右对齐）。行是 subgrid：列宽在本容器
+  //    （`[data-latency]`）内**整块共享**，短名字贴身、三行仍逐列对齐。
+  //  · **详细档（不带 adaptive）**：保持固定列原样（名字 80 + 数值 56 右对齐 + 丢包 40），
+  //    逐字未动——维持原表格感。
+  // 逐宽判据：tools/verify_latency_row_fit.mjs。
   return (
     // `data-latency` 是给护栏认「这一档摊没摊三网延迟」的锚点（`data-net` 同一套做法：
     // 按类名找会在改版后失配，而失配的表现是"看着没坏"）。
-    <div data-latency="" className="mt-4 space-y-1.5 border-t-[1.5px] border-dashed border-line-strong pt-4">
+    <div
+      data-latency=""
+      className={adaptive
+        ? "mt-4 grid grid-cols-[max-content_max-content_minmax(0,1fr)_2.5rem] items-center gap-x-2 gap-y-1.5 border-t-[1.5px] border-dashed border-line-strong pt-4"
+        : "mt-4 space-y-1.5 border-t-[1.5px] border-dashed border-line-strong pt-4"}
+    >
       {rows.map((p) => {
         const last = [...p.points].reverse().find((pt) => pt.latency !== null)
         const ms = last?.latency ?? null
@@ -218,21 +233,20 @@ export function LatencyPanel({ node, lines, onOpen }: { node: Node; lines: strin
         return (
           <div
             key={p.id}
-            className={`group flex items-center gap-2 text-xs ${onOpen ? "cursor-pointer" : ""}`}
+            className={adaptive
+              ? `group col-span-4 grid grid-cols-subgrid items-center gap-x-2 text-xs ${onOpen ? "cursor-pointer" : ""}`
+              : `group flex items-center gap-2 text-xs ${onOpen ? "cursor-pointer" : ""}`}
             onClick={onOpen ? (e) => { e.stopPropagation(); onOpen() } : undefined}
             title={onOpen ? "打开详情 · 网络延迟" : undefined}
           >
-            {/* 线路名列宽 80px（原 64px）：站长常把线路名写成「城市 · 服务商」（「东京 · Google」
-                实测 72px、被 64px 截成「东京 · Go…」，2026-10-12 视觉 QA 实拍发现）——放宽到
-                80px 后这一档常见的名字全放得下；再长的仍有 title 悬停看全名。首选名字列与
-                数字列都固定宽，行与行之间才对得齐（sparkline 是弹性的，少 16px 无碍）。
-                可点时（onOpen）hover 提亮，作为「行能点」的低调提示。 */}
-            <span data-probe-name="" className={`w-20 shrink-0 truncate text-muted-foreground ${onOpen ? "transition-colors group-hover:text-foreground" : ""}`} title={p.name}>{p.name}</span>
-            <span className={`tnum w-14 shrink-0 text-right font-medium ${gray}`}>
+            {/* 线路名列：自适应档按内容收缩（上限 80px = 老固定列宽，超长截断 + title 悬停看全）；
+                详细档保持 80px 固定列。可点时 hover 提亮，作为「行能点」的低调提示。 */}
+            <span data-probe-name="" className={`${adaptive ? "max-w-20" : "w-20 shrink-0"} truncate text-muted-foreground ${onOpen ? "transition-colors group-hover:text-foreground" : ""}`} title={p.name}>{p.name}</span>
+            <span className={adaptive ? `tnum text-right font-medium ${gray}` : `tnum w-14 shrink-0 text-right font-medium ${gray}`}>
               {ms === null ? "超时" : `${ms} ms`}
             </span>
             <Sparkline values={p.points.map((pt) => pt.latency)} className={gray} />
-            <span className="tnum w-10 shrink-0 text-right text-muted-foreground">
+            <span className={adaptive ? "tnum text-right text-muted-foreground" : "tnum w-10 shrink-0 text-right text-muted-foreground"}>
               {p.loss > 0 ? `${p.loss.toFixed(1)}%` : "0.0%"}
             </span>
           </div>
