@@ -14,7 +14,7 @@
 /* ------------------------------------------------------------------ 字体
    拉丁子集随主题包分发（离线可用：不联 Google Fonts、不依赖访客机器装了什么）。
    中文手写体走子集随包分发（全量 CJK 字面要几十 MB，这里只收用得到的字形，两枚合计
-   约 500KB）：字符集 = 仓库文本 + tools/cjk-extra.txt，由 tools/make_cjk_subset.py
+   约 520KB）：字符集 = 仓库文本 + tools/cjk-extra.txt，由 tools/make_cjk_subset.py
    从上游 OFL 字体生成（来源与许可见 FONTS.md）；集外汉字仍回落到系统字体。
 
    手写体的分工：标题・名称・强调 → Rakugaki Hand（马克笔感，霞鹜漫黑子集）；

@@ -20,7 +20,7 @@
 
 七款**均未声明 Reserved Font Name**；两枚中文子集仍改为 Rakugaki Hand / Rakugaki Kai 分发，
 避免与上游完整字面混淆（上游版权与许可声明保留在字体内部）。中文子集由
-`tools/make_cjk_subset.py` 生成：字符集 = 仓库文本 + `tools/cjk-extra.txt`（当前 1519 字），
+`tools/make_cjk_subset.py` 生成：字符集 = 仓库文本 + `tools/cjk-extra.txt`（当前 1596 字），
 集外汉字仍由访客系统字体兜底——字体栈写在 `src/index.css` 的 `--family-*` 里。
 
 ## 视觉参考
