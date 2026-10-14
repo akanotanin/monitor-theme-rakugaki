@@ -1,6 +1,6 @@
 # rakugaki
 
-![rakugaki](preview.png?v=3)
+![rakugaki](preview.png?v=4)
 
 极简探针（[Monitor](https://github.com/monitor-probe/monitor)）的第三方主题，源码基于上游默认主题
 `monitor-theme-default` v1.1.0 改造。纯静态前端，只读 hub 的公开接口，
@@ -11,7 +11,7 @@
 
 节点地球：
 
-![节点地球](preview-globe.png?v=4)
+![节点地球](preview-globe.png?v=5)
 
 列表页顶部那颗正射投影的地球（默认开着；站长在主题设置里关掉＝整块关，顶栏那枚图标也一起
 收起；开着时访客可以自己关，选完记在他自己的浏览器里）。
@@ -30,7 +30,7 @@
 |:---:|:---:|
 | ![简约形态](preview-plain.png?v=5) | ![经典形态](preview-classic.png?v=6) |
 | **延迟形态（默认）** | **详细形态** |
-| ![延迟形态](preview-latency.png?v=6) | ![详细形态](preview-detailed.png?v=5) |
+| ![延迟形态](preview-latency.png?v=7) | ![详细形态](preview-detailed.png?v=6) |
 | **紧凑形态** | |
 | ![紧凑形态](preview-compact.png?v=5) | |
 
