@@ -35,7 +35,7 @@ SRC = ROOT / "tools" / ".cjk-src"
 EXTRA = ROOT / "tools" / "cjk-extra.txt"
 
 CJK = re.compile(r"[\u2E80-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF\u3000-\u303F]")
-SYMBOLS = "↓↑←→×≈✓✕⚠·、，。！？；：（）「」『』《》〈〉【】…—～％＃＠＆★"
+SYMBOLS = "↓↑←→×≈✓✕⚠·、，。！？；：（）「」『』《》〈〉【】…—～％＃＠＆★∞≤≥–"
 MISSING_OK = set("⚠✓✕")  # 上游字体缺、由系统兜底的字形
 
 SKIP_DIRS = {".git", "node_modules", "dist", "release", "shots", ".vite-cache", ".vite-temp", ".cjk-src"}

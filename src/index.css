@@ -23,11 +23,15 @@
    数字读数（.tnum）→ Shantell Sans + Rakugaki Hand。
    试用基线（2026-10-14）：Newsreader / Instrument Sans / JetBrains Mono 的子集与声明
    暂时留着备用，回退只要换下面 --family-* 三行。 */
-@font-face { font-family: "Rakugaki Hand"; src: url("/fonts/rakugaki-hand.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; unicode-range: U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF, U+00B7, U+00D7, U+2190-2199, U+2248, U+2713, U+2715; }
-@font-face { font-family: "Rakugaki Kai"; src: url("/fonts/rakugaki-kai.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; unicode-range: U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF, U+00B7, U+00D7, U+2190-2199, U+2248, U+2713, U+2715; }
-@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-700-normal.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Rakugaki Hand"; src: url("/fonts/rakugaki-hand.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; unicode-range: U+2E80-2EFF, U+3000-303F, U+3040-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF, U+00B7, U+00D7, U+2013, U+2190-2199, U+221E, U+2248, U+2264-2265, U+2713, U+2715; }
+@font-face { font-family: "Rakugaki Kai"; src: url("/fonts/rakugaki-kai.woff2") format("woff2"); font-weight: 400 700; font-style: normal; font-display: swap; unicode-range: U+2E80-2EFF, U+3000-303F, U+3040-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF, U+00B7, U+00D7, U+2013, U+2190-2199, U+221E, U+2248, U+2264-2265, U+2713, U+2715; }
+/* ★Shantell Sans 管拉丁与数字，**唯独把 U+00B7（间隔点）让出去**：站点里中文名常用
+   「A · B」式中点分隔，而它排在各栈最前——不排除这个点会被抢成无衬线圆点，与两侧
+   手写汉字不是一个笔迹。让出后 · 落到同栈的 Rakugaki Hand / Rakugaki Kai（两枚的
+   unicode-range 里都列着 U+00B7）。 */
+@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; unicode-range: U+0000-00B6, U+00B8-10FFFF; }
+@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; unicode-range: U+0000-00B6, U+00B8-10FFFF; }
+@font-face { font-family: "Shantell Sans"; src: url("/fonts/shantell-sans-latin-700-normal.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; unicode-range: U+0000-00B6, U+00B8-10FFFF; }
 @font-face { font-family: "Newsreader"; src: url("/fonts/newsreader-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
 @font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }

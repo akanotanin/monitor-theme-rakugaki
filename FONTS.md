@@ -4,7 +4,7 @@
 
 ## 字体
 
-`public/fonts/` 下的 12 个 woff2 是以下七款字体的**子集**（拉丁只打用到的字重；两枚中文子集只收界面用得到的字形），随主题包分发（离线可用，
+`public/fonts/` 下的 12 个 woff2 是以下七款字体的**子集**（拉丁只打用到的字重；两枚中文子集收 GB2312 一级常用字全量、假名与界面符号），随主题包分发（离线可用，
 不联 Google Fonts、也不依赖访客机器装了什么）。七款均为 SIL Open Font License 1.1（OFL-1.1）；
 拉丁子集取自 Google Fonts 经 Fontsource 分发，两枚中文子集的来源与生成方式见下表与文末：
 
@@ -20,7 +20,7 @@
 
 七款**均未声明 Reserved Font Name**；两枚中文子集仍改为 Rakugaki Hand / Rakugaki Kai 分发，
 避免与上游完整字面混淆（上游版权与许可声明保留在字体内部）。中文子集由
-`tools/make_cjk_subset.py` 生成：字符集 = 仓库文本 + `tools/cjk-extra.txt`（当前 1596 字），
+`tools/make_cjk_subset.py` 生成：字符集 = 仓库文本 + `tools/cjk-extra.txt`（GB2312 一级常用字全量 + 假名 + 符号补遗，当前 4039 字），
 集外汉字仍由访客系统字体兜底——字体栈写在 `src/index.css` 的 `--family-*` 里。
 
 ## 视觉参考
