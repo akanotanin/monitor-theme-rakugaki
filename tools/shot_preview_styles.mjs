@@ -1,4 +1,4 @@
-// 拍 README 画廊里那五张「卡片形态」预览图（preview-plain / -classic / -latency / -detailed / -compact）。
+// 拍 README 画廊里那六张「卡片形态」预览图（preview-plain / -classic / -latency / -detailed / -wide / -compact）。
 // 面板缩略图是 preview.png（tools/shot_preview_panel.mjs 另拍），地球与手机那几张是 tools/shot_preview_set.mjs。
 //
 // 用法：node tools/shot_preview_styles.mjs [nodes.json=tools/globe-nodes-fixture.json] [输出目录=.]
@@ -8,7 +8,7 @@
 //      tools/globe-nodes-fixture.json 那套中性演示数据（Demo Node <城市>）。
 //   2. 只桩 /api/* 的伺服会让页面顶部挂「实时连接中断」的提示条，而且它自己会消失 ——
 //      同一份代码早晚两张图，一张干净一张带条。所以这里做**最小 WebSocket 握手**（不推数据）。
-//   3. 五档必须**同数据、同视口、同机位**，只差卡片形态那一处；视口高度按量出来的内容高度定，
+//   3. 六档必须**同数据、同视口、同机位**，只差卡片形态那一处；视口高度按量出来的内容高度定，
 //      不猜坐标（不然底部会多出一大片空白，或把最后一行卡片裁断）。
 //   4. 站点配置**由伺服自己回答**（每一档换一次），不碰站长存在 hub 里的那份配置。
 import { createServer } from 'node:http'
@@ -99,7 +99,7 @@ const SETTLED = `(() => {
   return true;
 })()`
 
-const STYLES = ['plain', 'classic', 'latency', 'detailed', 'compact']
+const STYLES = ['plain', 'classic', 'latency', 'detailed', 'wide', 'compact']
 for (const style of STYLES) {
   CONFIG = { ...CONFIG, cardStyle: style }
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] })

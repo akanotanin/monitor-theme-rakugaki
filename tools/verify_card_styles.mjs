@@ -1,4 +1,4 @@
-// 验「卡片形态」五档（经典 / 简约 / 延迟 / 详细 / 紧凑）在真实渲染里各自的形状，以及旧值 detail → latency 的迁移。
+// 验「卡片形态」六档（经典 / 简约 / 延迟 / 详细 / 宽卡 / 紧凑）在真实渲染里各自的形状，以及旧值 detail → latency 的迁移。
 //
 // ★ 备注（hub 的公开备注）那些判据 2026-10-03 起搬到了 tools/verify_public_remark.mjs：
 //   备注来源从主题的站点配置换成了 hub 按节点下发的 `public_remark`（见 1.16.0），
@@ -688,6 +688,66 @@ for (const [cfg, tag] of [[{}, 'empty'], [{ cardStyle: 'bogus' }, 'bogus']]) {
   check('紧凑：点一行就地展开、不跳详情页', state.path === '/' && state.expanded === true && state.rows === 4, raw)
   check('紧凑：展开里是延迟图（含 1/6/24/7 天范围）', state.svg > 0 && state.rangePills === true, raw)
   check('紧凑：展开行留有去整页详情的入口', state.detailLink === true, raw)
+}
+
+/* 7) 宽卡形态（2026-10-15 与 jikasei 同步）：一行两张 + 整页容器收 1080 */
+const WIDE_PROBE = `JSON.stringify((() => {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), w: Math.round(r.width), h: Math.round(r.height) } }
+  const grid = document.querySelector('[data-card-style="wide"]')
+  const cards = [...document.querySelectorAll('[data-node-card]')]
+  const withCells = cards.filter((c) => c.querySelector('[data-metrics]'))
+  const bars = [...document.querySelectorAll('.sk-bar')]
+  return {
+    cards: cards.length,
+    cardsWithCells: withCells.length,
+    gridCols: grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 0,
+    card: cards[0] ? box(cards[0]) : null,
+    grid: grid ? box(grid) : null,
+    shell: { header: box(document.querySelector('header > div')), main: box(document.querySelector('main')), footer: box(document.querySelector('footer')) },
+    bars: bars.length,
+    barClips: bars.length > 0 && bars.every((b) => b.className.indexOf('sk-bar') >= 0 && !!b.firstElementChild && getComputedStyle(b.firstElementChild).clipPath.indexOf('polygon') >= 0),
+    duo: document.querySelectorAll('[data-net="duo"]').length,
+    metrics: document.querySelectorAll('[data-metrics]').length,
+    latency: document.querySelectorAll('[data-latency]').length,
+    overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  } })())`
+
+async function renderWide(cfg, width, tag) {
+  config = cfg
+  await fetch(`http://127.0.0.1:${PORT}/__reset`)
+  await send('Emulation.setDeviceMetricsOverride', { width, height: 1400, deviceScaleFactor: 1, mobile: false })
+  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?m=${encodeURIComponent(tag)}` })
+  let dom = null
+  for (let i = 0; i < 60; i++) {
+    await sleep(300)
+    const raw = await evalJS(WIDE_PROBE)
+    if (!raw) continue
+    dom = JSON.parse(raw)
+    if (dom.cards > 0) break
+  }
+  if (!dom || dom.cards === 0) throw new Error(`宽卡 ${tag}：页面没渲染出卡片`)
+  await sleep(900) // 让延迟请求落地（宽卡应当一次都不发）
+  const { pingHits: hits } = await (await fetch(`http://127.0.0.1:${PORT}/__stats`)).json()
+  return { dom, ping: hits.length }
+}
+
+{
+  const { dom, ping } = await renderWide({ cardStyle: 'wide', listTop: 'none' }, 1440, 'wide')
+  check('宽卡：一行两张（1440 上两列）', dom.gridCols === 2, `列 ${dom.gridCols}`)
+  check('★ 宽卡：整页容器收 1080 —— 顶栏 / 主区 / 页脚共用一条列线',
+    dom.shell.header.l === dom.shell.main.l && dom.shell.main.l === dom.shell.footer.l &&
+    dom.shell.header.r === dom.shell.main.r && dom.shell.main.r === dom.shell.footer.r &&
+    dom.shell.main.r - dom.shell.main.l === 1080,
+    JSON.stringify(dom.shell))
+  check('宽卡：卡片 510 宽（1080 容器 × 两列）', Math.abs(dom.card.w - 510) <= 2, `卡 ${dom.card.w}×${dom.card.h}`)
+  check('宽卡：四格读数 + 上传下载两栏的结构锚点 × 有读数的卡数', dom.metrics === dom.cardsWithCells && dom.duo === dom.cardsWithCells, `metrics=${dom.metrics} duo=${dom.duo} 有读数卡=${dom.cardsWithCells}`)
+  check('宽卡：有读数的卡每张 5 条 sk-bar（四格 + 总流量），填充都带收笔毛边（clip-path polygon）',
+    dom.bars === 5 * dom.cardsWithCells && dom.barClips, `条 ${dom.bars} / 毛边 ${dom.barClips}`)
+  check('宽卡：不含延迟块、也不发延迟请求', dom.latency === 0 && ping === 0, `lan=${dom.latency} 请求 ${ping}`)
+  check('宽卡：1440 无横向溢出', !dom.overflowX)
+  const { dom: m } = await renderWide({ cardStyle: 'wide', listTop: 'none' }, 390, 'wide-m')
+  check('宽卡窄屏（390）：单列、卡片仍在', m.gridCols === 1 && m.cards > 0, `列 ${m.gridCols} / 卡 ${m.cards}`)
+  check('宽卡窄屏：无横向溢出', !m.overflowX)
 }
 
 ws.close()

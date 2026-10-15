@@ -435,7 +435,7 @@ if (picker) {
   check('下拉框上显示的是那一档的名字（没停在上一版的默认档上）',
     styleLabel !== '' && picker.text.startsWith(styleLabel.slice(0, 2)), `${picker.text.slice(0, 40)} ← 「${styleLabel.slice(0, 2)}」`)
   if (picker.kind === 'select') {
-    check('五个选项的文案与 theme.json 逐字同序',
+    check('六个选项的文案与 theme.json 逐字同序',
       JSON.stringify(picker.options) === JSON.stringify((styleField.options || []).map((o) => [o.value, o.label])),
       JSON.stringify(picker.options))
   }

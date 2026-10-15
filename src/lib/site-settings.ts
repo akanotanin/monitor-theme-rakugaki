@@ -13,10 +13,11 @@ export type ThemeConfig = {
   /**
    * 卡片形态：classic = 速率与总量各一行（2×2 四格）、不含延迟；plain = 网络合成一行，
    * 读数那层另换一套视觉处理（标签提亮、条压细、底注变小）、不含延迟；latency = 网络一行 +
-   * 三网延迟；detailed = 再加在线时长、价格与到期；compact = 一行一台的表格（密度最高）。
-   * 默认是 plain（2026-10-06 起，站长定的）。
+   * 三网延迟；detailed = 再加在线时长、价格与到期；wide = 一行两张的宽卡（系统行 + 四格读数 +
+   * 上传下载两栏 + 总流量条 + 底注，列表收成两列）；compact = 一行一台的表格（密度最高）。
+   * 默认是 latency（2026-10-14 起，站长定的）。
    */
-  cardStyle: "classic" | "latency" | "detailed" | "plain" | "compact"
+  cardStyle: "classic" | "latency" | "detailed" | "plain" | "wide" | "compact"
   /**
    * 列表页顶部显示什么：none = 都不显示；groups = 分组标签行；summary = 概览卡片行（原版）；
    * budget = 概览卡片行（月度预算剩余价值版）；both = 分组标签行 + 原版概览卡片；
@@ -95,8 +96,8 @@ export const DEFAULTS: ThemeConfig = {
  * ——「延迟」才是这一档真正展示的东西，也把「详细」这个名字腾给后面那一档。
  * 读到旧值就迁过来：不迁的话，存过 "detail" 的站会被当成从没保存过、悄悄掉回经典。
  */
-/** 卡片形态的五档，**按界面上要显示的顺序**（顶栏那枚菜单、后台那格下拉都照它排）。 */
-export const CARD_STYLES: ThemeConfig["cardStyle"][] = ["classic", "plain", "latency", "detailed", "compact"]
+/** 卡片形态的六档，**按界面上要显示的顺序**（顶栏那枚菜单、后台那格下拉都照它排）。 */
+export const CARD_STYLES: ThemeConfig["cardStyle"][] = ["classic", "plain", "latency", "detailed", "wide", "compact"]
 
 /**
  * 卡片形态这一档的取值，认不出来就 `null`。

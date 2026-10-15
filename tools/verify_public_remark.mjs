@@ -1,5 +1,5 @@
 // rakugaki 版：备注落点护栏——hub 后台按节点填的「公开备注」（给访客）与「私有备注」（只下发给登录的管理员）
-// 在五种卡片形态、「紧凑」就地展开、整页详情上的位置（两处合并成一串小卡片），以及「备注显示位置」四档真的
+// 在六种卡片形态、「紧凑」就地展开、整页详情上的位置（两处合并成一串小卡片），以及「备注显示位置」四档真的
 // 管住卡片侧与详情侧；外加「时间范围按保留天数生成」（见 @/lib/ranges）。
 //
 // 用法：node tools/verify_public_remark.mjs [端口]
@@ -14,6 +14,7 @@
 //     （「计费 / 到期」两个信息项），这两档卡面从此不摊备注、也没有任何浮层入口；
 //     「不再回来」那套断言在 verify_peek_retired.mjs，这里只钉「卡面零占位 + 不摊备注」；
 //   · 「详细」档备注挂在标题行右端（多枚小卡片、只占一行、放不下的悬停看全）；「简约」档不显示备注、也不挂那枚图标；
+//   · 「宽卡」档备注摊在底注右端（与价格 / 到期同一行，**最多 3 枚**）——2026-10-15 与 jikasei 同步；
 //   · 「紧凑」档并排在展开行量程栏右端（手机收成一枚图标 + 浮层）——这一处算「卡片」那一侧；
 //   · **整页详情与卡片摊的是同一串**：私有在前（带锁 + 描边，仅登录可见）、公有在后，都拆成一枚枚小卡片；
 //   · 没写备注的机器该处零占位；时间范围按 hub 的 `history_days` 生成（老 hub 按 7 天）。
@@ -666,6 +667,52 @@ console.log('\n── 备注显示位置：卡片与详情页 / 只在卡片 / �
   check('取值不认识 → 回落两边都摊（备注不会凭空消失）',
     junk.note === true && SAME(junk.tags, tagsOf(SHORT)), JSON.stringify(junk.tags))
   remark = SHORT
+}
+
+/* ──────────────────── ⑨b 宽卡档：备注摊在底注右端（最多 3 枚） ──────────────────── */
+console.log('\n── 宽卡档：备注摊在底注右端（与价格 / 到期同行、最多 3 枚；「备注显示位置」照管） ──')
+const WIDE_FOOT_PROBE = (name) => `JSON.stringify((() => {
+  const card = ${CARD(name)}
+  if (!card) return { missing: true }
+  const wrap = card.querySelector('[data-remark="card"]')
+  const chips = wrap ? [...wrap.querySelectorAll('[data-slot="badge"]')] : []
+  const noteEl = [...card.querySelectorAll('span')].find((s) => /^¥|^价格|^剩余|^今天到期|^已过期/.test(s.textContent.trim()))
+  const c = card.getBoundingClientRect()
+  return {
+    cardH: Math.round(c.height),
+    hasWrap: !!wrap,
+    chips: chips.map((b) => b.innerText.trim()),
+    chipTitles: chips.map((b) => b.getAttribute('title') || ''),
+    note: noteEl ? noteEl.textContent.trim() : null,
+    sameRow: wrap && noteEl ? Math.abs(wrap.getBoundingClientRect().top - noteEl.getBoundingClientRect().top) <= 12 : null,
+    noOverlap: wrap && noteEl ? wrap.getBoundingClientRect().left >= noteEl.getBoundingClientRect().right - 1 : null,
+    overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }
+})())`
+{
+  remark = ''
+  await render({ cardStyle: 'wide' }, 'wide-base')
+  const base = await json(WIDE_FOOT_PROBE('节点一'))
+  check('宽卡（没写备注）：底注不带备注串', base.hasWrap === false && base.chips.length === 0, JSON.stringify(base.chips))
+
+  remark = SHORT
+  await render({ cardStyle: 'wide' }, 'wide-note')
+  const on = await json(WIDE_FOOT_PROBE('节点一'))
+  check('宽卡（写了备注）：底注右端三枚小卡片逐枚同序', SAME(on.chips, tagsOf(SHORT)), JSON.stringify(on.chips))
+  check('宽卡（写了备注）：每枚整枚挂在 title 上', SAME(on.chipTitles, tagsOf(SHORT)), JSON.stringify(on.chipTitles))
+  check('宽卡（写了备注）：与「价格 / 到期」同一行、右侧不重叠', on.sameRow === true && on.noOverlap === true, `同行=${on.sameRow} 不重叠=${on.noOverlap}`)
+  check('宽卡（写了备注）：不重排、不加高（与没写时差 ≤ 8px）', Math.abs(on.cardH - base.cardH) <= 8, `${on.cardH} vs ${base.cardH}`)
+  check('宽卡（写了备注）：没有横向溢出', on.overflowX === false)
+
+  remark = MANY
+  await render({ cardStyle: 'wide' }, 'wide-many')
+  const many = await json(WIDE_FOOT_PROBE('节点一'))
+  check('★ 宽卡：备注最多摊 3 枚（夹具写了 6 枚，只摊前 3 枚）', SAME(many.chips, tagsOf(MANY).slice(0, 3)), JSON.stringify(many.chips))
+
+  await render({ cardStyle: 'wide', remarkPlacement: 'detail' }, 'wide-place-detail')
+  const hidden = await json(WIDE_FOOT_PROBE('节点一'))
+  check('宽卡（备注显示位置=只在详情页）：底注不摊备注', hidden.hasWrap === false && hidden.chips.length === 0, JSON.stringify(hidden.chips))
+  remark = ''
 }
 
 /* ────────────────────── ⑩ 时间范围按保留天数生成 ────────────────────── */
