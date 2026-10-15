@@ -14,7 +14,7 @@
 //     （「计费 / 到期」两个信息项），这两档卡面从此不摊备注、也没有任何浮层入口；
 //     「不再回来」那套断言在 verify_peek_retired.mjs，这里只钉「卡面零占位 + 不摊备注」；
 //   · 「详细」档备注挂在标题行右端（多枚小卡片、只占一行、放不下的悬停看全）；「简约」档不显示备注、也不挂那枚图标；
-//   · 「宽卡」档备注摊在底注右端（与价格 / 到期同一行，**最多 3 枚**）——2026-10-15 与 jikasei 同步；
+//   · 「宽卡」档备注摊在底注右端（与价格 / 到期同一行，**最多 3 枚**）——2026-10-15 与 jikasei 同步；底注恒定占位（2026-10-16）：卡片高度与有没有备注无关；
 //   · 「紧凑」档并排在展开行量程栏右端（手机收成一枚图标 + 浮层）——这一处算「卡片」那一侧；
 //   · **整页详情与卡片摊的是同一串**：私有在前（带锁 + 描边，仅登录可见）、公有在后，都拆成一枚枚小卡片；
 //   · 没写备注的机器该处零占位；时间范围按 hub 的 `history_days` 生成（老 hub 按 7 天）。
@@ -693,7 +693,7 @@ const WIDE_FOOT_PROBE = (name) => `JSON.stringify((() => {
   remark = ''
   await render({ cardStyle: 'wide' }, 'wide-base')
   const base = await json(WIDE_FOOT_PROBE('节点一'))
-  check('宽卡（没写备注）：底注不带备注串', base.hasWrap === false && base.chips.length === 0, JSON.stringify(base.chips))
+  check('宽卡（没写备注）：备注槽在但一枚不摊（恒定占位）', base.hasWrap === true && base.chips.length === 0, JSON.stringify(base.chips))
 
   remark = SHORT
   await render({ cardStyle: 'wide' }, 'wide-note')
@@ -701,7 +701,7 @@ const WIDE_FOOT_PROBE = (name) => `JSON.stringify((() => {
   check('宽卡（写了备注）：底注右端三枚小卡片逐枚同序', SAME(on.chips, tagsOf(SHORT)), JSON.stringify(on.chips))
   check('宽卡（写了备注）：每枚整枚挂在 title 上', SAME(on.chipTitles, tagsOf(SHORT)), JSON.stringify(on.chipTitles))
   check('宽卡（写了备注）：与「价格 / 到期」同一行、右侧不重叠', on.sameRow === true && on.noOverlap === true, `同行=${on.sameRow} 不重叠=${on.noOverlap}`)
-  check('宽卡（写了备注）：不重排、不加高（与没写时差 ≤ 8px）', Math.abs(on.cardH - base.cardH) <= 8, `${on.cardH} vs ${base.cardH}`)
+  check('★ 宽卡（写了备注）：不重排、不加高（与没写时完全相同——底注恒定占位）', Math.abs(on.cardH - base.cardH) <= 1, `${on.cardH} vs ${base.cardH}`)
   check('宽卡（写了备注）：没有横向溢出', on.overflowX === false)
 
   remark = MANY
@@ -711,7 +711,7 @@ const WIDE_FOOT_PROBE = (name) => `JSON.stringify((() => {
 
   await render({ cardStyle: 'wide', remarkPlacement: 'detail' }, 'wide-place-detail')
   const hidden = await json(WIDE_FOOT_PROBE('节点一'))
-  check('宽卡（备注显示位置=只在详情页）：底注不摊备注', hidden.hasWrap === false && hidden.chips.length === 0, JSON.stringify(hidden.chips))
+  check('宽卡（备注显示位置=只在详情页）：底注不摊备注（备注槽空着，卡片照样等高）', hidden.hasWrap === true && hidden.chips.length === 0, JSON.stringify(hidden.chips))
   remark = ''
 }
 
