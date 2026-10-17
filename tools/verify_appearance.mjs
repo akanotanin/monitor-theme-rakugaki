@@ -8,6 +8,7 @@
 //     访客存在自己浏览器里的旧偏好也不许把站长关掉的整块顶回来。
 //   · 访客自己的选择优先：站点设 light、访客 localStorage 记着 dark → 页面是暗的；
 //     站点设 globeOn=开、访客自己关过 → 地球不渲染但**开关还在**（他自己能开回来）
+//   · 暗色：卡片/纸 分得开、且暖面仍亮于卡片（2026-10-17 口径；防「抬升面调回去 / 只抬一半」的回退）
 //
 // 用法：node tools/verify_appearance.mjs
 import { spawn } from 'node:child_process'
@@ -124,6 +125,21 @@ async function load({ config, systemDark = false, visitor = null, globePref = un
         card: cardEff,
       }
     })(),
+    // 卡面与暖面（2026-10-17「暗色下卡片与页面底分得开」那条判据用）：同样取**合成后**的有效色。
+    surface: (() => {
+      const paint = (under, top) => {
+        const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d')
+        if (under) { x.fillStyle = under; x.fillRect(0, 0, 1, 1) }
+        x.fillStyle = top; x.fillRect(0, 0, 1, 1)
+        const d = x.getImageData(0, 0, 1, 1).data
+        return 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')'
+      }
+      const card = document.querySelector('main [data-node-card], [data-slot=card]')
+      if (!card) return null
+      const cardEff = paint(getComputedStyle(document.body).backgroundColor, getComputedStyle(card).backgroundColor)
+      const warmRaw = getComputedStyle(document.documentElement).getPropertyValue('--paper-warm').trim() || 'transparent'
+      return { card: cardEff, line: paint(cardEff, getComputedStyle(card).borderTopColor), warm: paint(cardEff, warmRaw) }
+    })(),
     bodyBg: (() => {
       const c = document.createElement('canvas'); c.width = c.height = 1
       const x = c.getContext('2d'); if (!x) return null
@@ -194,6 +210,22 @@ check('暗色：同上（暗底上的有效对比度与亮色不是一回事，�
   s.meter && s.meter.alpha < 1 && contrast(s.meter.fill, s.meter.card) >= 3.5 && contrast(s.meter.fill, s.meter.card) <= 8 &&
   contrast(s.meter.fill, s.meter.card) < contrast(s.meter.text, s.meter.card),
   JSON.stringify(s.meter) + ` 填色 ${s.meter && contrast(s.meter.fill, s.meter.card)}:1 / 正文 ${s.meter && contrast(s.meter.text, s.meter.card)}:1`)
+
+console.log('\n=== 暗色：卡片与页面底分得开（2026-10-17 口径）===')
+/**
+ * 「暗色下卡片与页面底区分不明显」的反馈后的口径：抬升面 --elev #262624→#2b2a28（卡/纸 1.10→1.16）、
+ * 暖面 --paper-warm #2a2825→#2e2d2b。判据只针对暗色（亮色那套没动），两条：
+ *   · 卡/纸 合成对比 ≥ 1.14（抬升前 1.10 就是「分不开」的那一档；现在实测 1.16），封顶 1.35
+ *     （再往上卡片开始"浮灰"、也会去贴亮墨线的亮度）；
+ *   · **暖面必须仍比卡片亮**（亮度更高且 ≥ 1.015）—— 两档必须一起抬：只抬卡片会让悬停/次级面
+ *     从「亮一档」翻成「压暗」，那是比不动更糟的状态。
+ */
+s = await load({ config: { themeMode: 'dark', globeOn: true } })
+const sf = s.surface
+check('暗色：卡/纸 ≥ 1.14 且 ≤ 1.35、暖面仍亮于卡片（≥ 1.015）',
+  !!(sf && contrast(sf.card, s.bodyBg) >= 1.14 && contrast(sf.card, s.bodyBg) <= 1.35 &&
+    lumOf(sf.warm) > lumOf(sf.card) && contrast(sf.warm, sf.card) >= 1.015),
+  sf ? `卡/纸 ${contrast(sf.card, s.bodyBg)} 暖面/卡 ${contrast(sf.warm, sf.card)} 暖>卡=${lumOf(sf.warm) > lumOf(sf.card)}（卡 ${sf.card} 暖 ${sf.warm} 纸 ${s.bodyBg}）` : '没找到卡片')
 
 console.log('\n=== 节点地球开关 ===')
 s = await load({ config: { themeMode: 'light', globeOn: true } })
