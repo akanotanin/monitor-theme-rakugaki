@@ -45,23 +45,24 @@ const loadDetail = () => import("@/components/NodeDetail").then((m) => ({ defaul
 const NodeDetail = lazy(loadDetail)
 
 /**
- * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 四张图），
+ * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 五张图），
  * 不是一枚 `h-96`。它露面的场景只有一个 —— 点开时图表 chunk 还没到（见下面 warmDetail），
  * 所以它的高度必须跟加载完的内容一样，否则那一下会「先塌再撑」。
  *
  * 尺寸不另立一套，全跟着详情页自己那几块的类走：`dt` text-xs(16) + `dd` text-sm(20)、
- * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、四张图之间 space-y-5、
+ * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、五张图之间 space-y-5、
  * 规格格那层用同一套 grid 断点。于是手机上（一列）与桌面上（三列）都自动对上。
  *
  * ★三处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
  *   ① **备注块**（22px）—— 真实页里那台机器有备注才占位，所以这里得按 `hasRemarks` 判一次，
  *      不能无条件画（没备注的机器会反过来高出 38px）；（2026-10-06 修）
- *   ② **四张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
+ *   ② **五张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
  *      整页少 8px。①+② = 22+16+8 = 46px，正是那 46px 的差额；（2026-10-06 修）
- *   ③ **TCP/UDP 连接数两格**（2026-10-15 修，与 jikasei 同步）—— 详情页 2026-10-14 加了这两格
- *      （真实页 +2 格），骨架没跟：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。
- *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画这两格（离线机器
- *      两格隐身、真实页也隐身）。
+ *   ③ **TCP / UDP 连接那一格**（2026-10-17 与 jikasei 1.33.0 同步合成**一格**）—— 详情页
+ *      2026-10-14 应站长要求加了连接数、站长随后在 kanso 定了「合成一格」的口径（写法照
+ *      「内存 / 硬盘」）；骨架没跟的话：桌面三列多出一行（+48px）、手机一列多出一行（+48px）。
+ *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画这一格（离线机器
+ *      它隐身、真实页也隐身）。
  *   ④ **计费/到期两格**（2026-10-15 修，本皮肤独有）—— 2026-10-14 悬浮层退役时把「计费/到期」
  *      挪进了详情页（jikasei 没有这两格），骨架同样没跟。判法照 `billingText` 的同源谓词：
  *      「到期」永远在（缺省写「无期限」）、「计费」按 `priceText(node)` 判（没记价格不占格）。
@@ -75,8 +76,8 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling
         <Skeleton className="h-7 w-44" />
       </div>
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
-        {/* 格数 = 6 基础 + 1 到期 + （metrics ? TCP/UDP 两格）+ （有价格 ? 计费一格）——见上面 ★③④。 */}
-        {[...Array(7 + (hasConnections ? 2 : 0) + (hasBilling ? 1 : 0)).keys()].map((i) => (
+        {/* 格数 = 6 基础 + 1 到期 + （metrics ? TCP/UDP 一格）+ （有价格 ? 计费一格）——见上面 ★③④。 */}
+        {[...Array(7 + (hasConnections ? 1 : 0) + (hasBilling ? 1 : 0)).keys()].map((i) => (
           <div key={i} className="min-w-0">
             <Skeleton className="h-4 w-12" />
             <Skeleton className="h-5 w-28" />
@@ -102,10 +103,11 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling
           <Skeleton className="h-6 w-16" />
         </div>
       </div>
-      {/* 四张资源图：整页详情的默认页签就是它，所以骨架照它的高度来。
+      {/* 五张资源图：整页详情的默认页签就是它，所以骨架照它的高度来
+          （2026-10-17 与 jikasei 1.33.0 同步：网络速率 / TCP·UDP 连接 / CPU / 内存 / 硬盘）。
           ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。 */}
       <div className="space-y-5">
-        {[0, 1, 2, 3].map((i) => (
+        {[0, 1, 2, 3, 4].map((i) => (
           <div key={i}>
             <Skeleton className="mb-2 h-4 w-16" />
             <Skeleton className="h-40 w-full" />
