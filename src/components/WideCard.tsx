@@ -161,14 +161,12 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
       {/* ① 身份行：旗子 + 名字。不带状态点、不带徽章——在线与否写在②那行文字里。
           名字的字体规格照 NodeCard 那张（font-display 15px/600），一排卡片里是同一支笔。 */}
       <div className="flex min-w-0 items-center gap-2 lg:gap-3">
-        {/* 旗子外面套一圈小方框（照站长那张图）。★只在真有国家码时才画：没有国家码时
-            Country 返回 null，无条件渲染会剩一个 5×5 的空描边方块（实测）。
-            底色用 `bg-card` —— `bg-elev` 在本项目的 @theme 里没有对应 token，构建出来是空类。 */}
-        {node.country ? (
-          <span className="inline-flex shrink-0 items-center justify-center rounded-[4px] border-[1.5px] border-line-strong bg-card p-[1.5px]">
-            <Country node={node} />
-          </span>
-        ) : null}
+        {/* 旗子直接摆在这里，**不套第二层小方框**：Country 自己已经带了 1.5px 描边
+            （`ring-[1.5px] ring-line-strong`），外面再画一圈就成了两条平行线 ——
+            2026-10-30 站长对比「经典」档截图指出「总览形态的国旗显示和其他形态的不一样，似乎有瑕疵」，
+            实测：总览这道描边在 3× 截图里是 6px 灰带、经典档只有 2px，就是两条线并在一起。
+            现在六档的旗子都是同一枚（`Country` 原样，不带任何包裹）。 */}
+        <Country node={node} />
         <h3 className="font-display min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-.01em]"><TextHighlight text={node.name} terms={terms} /></h3>
       </div>
 

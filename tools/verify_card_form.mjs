@@ -166,6 +166,12 @@ const probe = `(() => {
       dot: dot ? { status: dot.dataset.status, size: box(dot), radius: getComputedStyle(dot).borderRadius, color: paint(dot, getComputedStyle(c).backgroundColor) } : null,
       badge: (() => { const b = [...c.querySelectorAll('[data-slot="badge"]')].find((x) => x.textContent.trim() === '已离线'); return b ? { text: b.textContent.trim(), color: paint(b, getComputedStyle(c).backgroundColor) } : null })(),
       meta: c.querySelector('p')?.textContent ?? null,
+      // 旗子外面有没有第二层框（2026-10-30：总览档曾套一圈 border，与 Country 自带的 1.5px
+      // ring 并成两条平行线，3× 截图里就是一条 6px 灰带 —— 比其余五档粗三倍）
+      flagFrame: (() => {
+        const img = c.querySelector('img[src^="/flags/"]')
+        return img ? Number.parseFloat(getComputedStyle(img.parentElement).borderTopWidth) || 0 : null
+      })(),
       cells,
       gridCols: m ? getComputedStyle(m).gridTemplateColumns.split(' ').length : 0,
       // 列表那一层：一行几张卡（宽卡口径，768 起两列）。
@@ -203,6 +209,9 @@ check('★ 六张卡都不带状态点（与其余形态同一口径）',
   cards.every((c) => c.dot === null), JSON.stringify(cards.map((c) => c.dot)))
 check('★ 六张卡都不挂「已离线」徽章（掉线那台由②那行写出时长）',
   cards.every((c) => c.badge === null), JSON.stringify(cards.map((c) => c.badge?.text ?? null)))
+check('★ 旗子只有一道描边（与其余五档同一枚，外面不再套第二层框）',
+  cards.filter((c) => c.flagFrame !== null).length > 0 && cards.every((c) => !c.flagFrame),
+  JSON.stringify(cards.map((c) => [c.name, c.flagFrame])))
 check('卡片宽度是 299（整页 1280 容器 × 四列，与经典档同宽）',
   Math.abs((one?.box?.w ?? 0) - 299) <= 2, `卡宽 ${one?.box?.w} / 高 ${one?.box?.h}`)
 

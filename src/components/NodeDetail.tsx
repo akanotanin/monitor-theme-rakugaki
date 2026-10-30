@@ -81,15 +81,15 @@ const TABS = [
  * ★2026-10-30 站长反馈「给详情页的曲线图也加上卡片」：此前这五张图是**裸图**——标题一行、
  * 图直接画在点阵纸面上，全靠留白分块。同一页里上面的规格区是散的、下面的图表也是散的，
  * 整页只有列表页有卡，看起来像「图表还没排完版」。包进卡片后每张图自带一个落点，
- * 五张卡与列表页的卡片是同一套笔触；★但圆角**不**沿用 `.sk-card:nth-child(2n)` 的奇偶交替：
- * 那是给网格里并排的卡片用的，竖排整宽卡交替后相邻两张弧向相反（1/3/5 与 2/4 互为镜像），
- * 而且 nth-child 落在会被条件渲染推动的容器上 —— 加一条备注就能让同一张卡翻面。改用
- * `.sk-card-panel` 那一组固定半径（见 index.css）。
+ * 五张卡与列表页的卡片是同一套笔触，连 `--r-card` / `--r-card-alt` 的奇偶交错都沿用
+ * （`.sk-card:nth-child(2n)`）—— 那就是这个皮肤「手画纸边」的味道。2026-10-30 试过把它们
+ * 收敛成一组温和的固定圆角，站长看过说「为什么详情页的卡片变成圆角了呢，原本的卡片样子更好」，
+ * 已改回；只有单张的延迟卡为了不吃 nth-child 的翻面才固定成 `--r-card`（见 index.css）。
  * 内边距 16px、图高仍是 160（h-40）不动：变的只是外面多了一层纸。
  */
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="sk-card sk-card-panel p-4">
+    <div className="sk-card p-4">
       <h4 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h4>
       <div className="h-40 w-full text-muted-foreground">{children}</div>
     </div>
