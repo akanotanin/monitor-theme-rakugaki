@@ -4,8 +4,7 @@
 
 极简探针（[Monitor](https://github.com/monitor-probe/monitor)）的第三方主题，源码基于上游默认主题
 `monitor-theme-default` v1.1.0 改造。纯静态前端，只读 hub 的公开接口，
-国旗、图标与字体都自带，离线可用。视觉语言参考 [cc-router](https://ccrouter.app/)，
-代码与那个项目没有往来（见 [FONTS.md](FONTS.md) 的「视觉参考」一段）。
+国旗、图标与字体都自带，离线可用。
 
 ## 预览
 
