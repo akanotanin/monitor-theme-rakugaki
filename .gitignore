@@ -37,3 +37,9 @@ dist-ssr
 
 # 站内自用：只在自家隔离测试 hub 上跑的运维脚本（登录、切主题、改设置），不进公开仓库
 /tools/testhub_theme.sh
+
+# 截图工具的 Chrome 临时 profile（旧版曾落在仓库根）
+ss-chrome-*/
+
+# 临时探针/截图脚本（本机调试用，不进仓库）
+scratch/

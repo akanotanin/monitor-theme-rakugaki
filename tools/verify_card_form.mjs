@@ -138,13 +138,16 @@ const probe = `(() => {
     const dot = c.querySelector('[data-status]')
     const net = c.querySelector('[data-net]')
     const cells = m ? [...m.children].map((el) => {
-      const divs = el.querySelectorAll('div')
-      const bar = el.querySelectorAll('div')[2]
+      // ★2026-10-30 起一格的骨架是「表名 div / 读数 div / 条 div」（按图回到上下堆叠）。
+      // 取前两个元素而不是按下标找 div：条那层以后若多包一层也不会读错。
+      const bar = el.querySelector('div.sk-bar')
+      const label = [...el.children].find((k) => k !== bar)
+      const value = [...el.children].filter((k) => k !== bar && k !== label)[0]
       return {
-        label: divs[0].textContent,
-        value: divs[1].textContent,
-        valueStyle: style(divs[1]),
-        labelStyle: style(divs[0]),
+        label: label?.textContent ?? '',
+        value: value?.textContent ?? '',
+        valueStyle: style(value ?? el),
+        labelStyle: style(label ?? el),
         title: el.getAttribute('title'),
         barPct: +(bar.firstElementChild.style.width.replace('%', '')),
         barH: Math.round(bar.getBoundingClientRect().height),
@@ -200,8 +203,8 @@ check('★ 六张卡都不带状态点（与其余形态同一口径）',
   cards.every((c) => c.dot === null), JSON.stringify(cards.map((c) => c.dot)))
 check('★ 六张卡都不挂「已离线」徽章（掉线那台由②那行写出时长）',
   cards.every((c) => c.badge === null), JSON.stringify(cards.map((c) => c.badge?.text ?? null)))
-check('卡片宽度是 510（整页 1080 容器 × 两列）',
-  Math.abs((one?.box?.w ?? 0) - 510) <= 2, `卡宽 ${one?.box?.w} / 高 ${one?.box?.h}`)
+check('卡片宽度是 299（整页 1280 容器 × 四列，与经典档同宽）',
+  Math.abs((one?.box?.w ?? 0) - 299) <= 2, `卡宽 ${one?.box?.w} / 高 ${one?.box?.h}`)
 
 // ② meta 行
 console.log('\n② 系统 · 在线时长')
@@ -216,14 +219,19 @@ console.log('\n③ 四个读数格 CPU / 内存 / 硬盘 / 负载')
 check('四格、四列、上面一条虚线分隔线',
   one?.gridCols === 4 && one.cells.length === 4 && Number.parseFloat(one.dividerWidth) >= 1 && one.dividerStyle === 'dashed',
   `cols=${one?.gridCols} divider=${one?.dividerWidth} ${one?.dividerStyle}`)
-check('标签依次是 CPU / 内存 / 硬盘 / 负载（弱化灰、12px）',
+// ★2026-10-30 按站长那张单卡设计图重做，尺寸落在「经典档的小卡」：表名 11 / 读数 13 / 条 7，
+// 卡 299×248（1440 四列）。中间试过的「按卡宽等比放大」「两列 610」两版都被站长否掉。
+check('标签依次是 CPU / 内存 / 硬盘 / 负载（弱化灰、11px）',
   JSON.stringify(one?.cells.map((c) => c.label)) === JSON.stringify(['CPU', '内存', '硬盘', '负载']) &&
-  one.cells.every((c) => c.labelStyle.size === '12px'),
-  JSON.stringify(one?.cells.map((c) => c.label)))
-check('读数是两小数百分比、加粗、比标签大一档（13px/600）',
-  one?.cells[0].value === '3.20%' && one.cells[1].value === '20.11%' && one.cells[2].value === '21.45%' &&
+  one.cells.every((c) => Number.parseFloat(c.labelStyle.size) === 11),
+  JSON.stringify(one?.cells.map((c) => [c.label, c.labelStyle.size])))
+// ★百分比口径与 Meter / CompactList 同一套（<10 留一位小数、≥10 取整）：299 宽的卡里读数格只有
+// ~57px，「100.00%」要 63px，满载那台会被 truncate 成省略号（2026-10-30 审读实测）。
+check('读数是百分比（<10 一位小数、≥10 取整）、加粗、比表名大一档（13px/600）',
+  one?.cells[0].value === '3.2%' && one.cells[1].value === '20%' && one.cells[2].value === '21%' &&
+  one.cells.slice(0, 3).every((c) => /^\d+(\.\d)?%$/.test(c.value)) &&
   one.cells.every((c) => c.valueStyle.weight === '600' && Number.parseFloat(c.valueStyle.size) === 13),
-  JSON.stringify(one?.cells.map((c) => c.value)))
+  JSON.stringify(one?.cells.map((c) => [c.value, c.valueStyle.size])))
 check('负载读数是一分钟均值（0.08），悬停说明里带三条均值与单位',
   one?.cells[3].value === '0.08' && /0\.08 0\.03 0\.01/.test(one.cells[3].title ?? ''), String(one?.cells[3].title))
 check('★ 负载的条 = load / 核数（0.08 / 2 核 = 4%），不是把均值当百分比',
@@ -307,9 +315,10 @@ check('从未接入那台：只有身份行 + 一行说明，没有读数区', n
   check('★ 备注小卡片收成紧凑档（高 10–17px：塞得进底注那行，不把卡片撑高）',
     typeof chipH === 'number' && chipH >= 10 && chipH <= 17, `实测 ${chipH}px`)
 }
-check('★ 列表是一行两张宽卡（768 起两列，1440 上两列）', cards[0]?.listCols === 2, `listCols=${cards[0]?.listCols}`)
-check('★ 卡片是宽扁的（宽 ≥ 2×高）',
-  cards.filter((c) => c.cells).every((c) => c.box.w >= 2 * c.box.h),
+check('★ 列表与经典档同网格（sm=640 起两列，1440 上四列）', cards[0]?.listCols === 4, `listCols=${cards[0]?.listCols}`)
+// 2026-10-30 的四列小卡是 299×248（比例 ≈1.21），不再是两列 610 那版；判据只留「横着放」。
+check('★ 卡片是横着的（宽 > 高）',
+  cards.filter((c) => c.cells).every((c) => c.box.w > c.box.h),
   JSON.stringify(cards.map((c) => `${c.box.w}x${c.box.h}`)))
 check('1440 视口上整页没有横向溢出',
   (await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth')) === true,
@@ -322,7 +331,7 @@ for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySel
 await sleep(700)
 const m390 = JSON.parse(await js(probe) ?? '[]')
 check('手机上一列：四列读数格仍是四列', m390[0]?.gridCols === 4, String(m390[0]?.gridCols))
-check('手机上一列：列表是单列（两列宽卡从 768 起）', m390[0]?.listCols === 1, `listCols=${m390[0]?.listCols}`)
+check('手机上一列：列表是单列（两列从 768 起）', m390[0]?.listCols === 1, `listCols=${m390[0]?.listCols}`)
 check('手机上四个读数都没被截（scrollWidth ≤ clientWidth）',
   (await js(`(() => {
     const c = document.querySelector('[data-node-card]')

@@ -1,10 +1,10 @@
-// 顶栏搜索（名称 / 地区 / 系统）的验收：收起是一枚方形图标、点开就地长成输入框（往左边长、
+// 顶栏搜索（名称 / 地区 / 系统）的验收：收起是一枚 36px 的墨线圆盘（与旁边那排图标按钮同款）、点开就地长成输入框（往左边长、
 // 150ms 过渡）、失焦收回去但**词留着**、窄屏是顶栏下多一行、空态说没说清怎么取消。
 //
 // 用法：node tools/verify_search.mjs [baseUrl]
 //   不给 baseUrl：本机起静态服务器伺服 dist/ + 桩 /api/*（六台夹具机器，判据只由代码决定）。
 //   给了 baseUrl：直接打在真站上 —— 夹具那些「搜出几台」的断言跳过（真站上有什么机器不由这里决定），
-//                 只验结构：方形/长开的几何、过渡时长、边框与占位文案的显隐、窄屏那一行、无横向溢出。
+//                 只验结构：圆盘/长开的几何、过渡时长、边框与占位文案的显隐、窄屏那一行、无横向溢出。
 //
 // 环境变量：
 //   SHOT_DIR=<目录>       把关键机位连图存下（收起 / 长开 / 搜出结果 / 窄屏 / 深色）。
@@ -23,6 +23,9 @@ const PORT = 5240
 const BASE = (process.argv[2] || `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
 const REAL = !!process.argv[2]
 const SETTLE = Number(process.env.SEARCH_WAIT_MS || 2500)
+// 截图放大倍数：CDP 的 clip.scale 与 deviceScaleFactor 是**相乘**的（都取 2 就是 4×，图会比
+// 视口大四倍、内容只落在左上角一块）。要看像素细节时把它设成 1，图就是 DPR 那一档。
+const SHOT_SCALE = Number(process.env.SHOT_SCALE || 2)
 const SHOT_DIR = process.env.SHOT_DIR || ''
 // 夹具配置钉死（技能第 44 条：判据只由代码决定，不取自那台 hub 上存的配置）。
 // `listTop: "both"` = 分组标签 + 概览卡片·原版：「概览跟着搜索收窄」这一条才验得到。
@@ -127,6 +130,7 @@ const PROBE = `(() => {
     return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right),
       display: cs.display, visibility: cs.visibility, focused: el === document.activeElement, rendered: el.offsetParent !== null,
       title: el.getAttribute('title'), color: cs.color, bg: cs.backgroundColor, borderColor: cs.borderTopColor, borderWidth: cs.borderTopWidth,
+      radius: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].join(' '),
       boxShadow: cs.boxShadow, transition: cs.transitionProperty + ' ' + cs.transitionDuration }
   }
   const wide = q('.search-field-wide')
@@ -148,7 +152,9 @@ const PROBE = `(() => {
   const rowEl = q('header > div')
   const live = rowInput && rowInput.offsetParent !== null ? rowInput : input
   return JSON.stringify({
-    input: box(input), wide: box(wide), icon: box(icon), neighborIcon: box(q('header .globe-toggle svg')), toggle: box(q('.search-toggle')), row: box(rowWrap), rowInput: box(rowInput), clear: box(q('.search-clear')),
+    input: box(input), wide: box(wide), icon: box(icon), // 邻座那枚图标的颜色基准：优先取地球开关（同一排、同一支底色），站长把它关掉时退到
+    // 「切换主题」那一枚 —— 真站上（REAL 模式）没有夹具兜底，少了这条回退就会读到 undefined。
+    neighborIcon: box(q('header .globe-toggle svg') || q('header button[title="切换主题"] svg')), toggle: box(q('.search-toggle')), row: box(rowWrap), rowInput: box(rowInput), clear: box(q('.search-clear')),
     header: box(q('header')), headerRow: rowEl ? { scrollW: rowEl.scrollWidth, clientW: rowEl.clientWidth } : null, siteName: box(q('header button')),
     main: box(q('main')), themeButton: box(q('header button[title="切换主题"]')),
     inputInHeader: !!(input && q('header').contains(input)), rowInHeader: !!(rowWrap && q('header').contains(rowWrap)),
@@ -190,14 +196,14 @@ const shot = async (name, sel, pad = 12) => {
     return JSON.stringify({ x: Math.round(r.x + scrollX) - ${pad}, y: Math.round(r.y + scrollY) - ${pad}, width: Math.round(r.width) + ${pad * 2}, height: Math.round(r.height) + ${pad * 2} })
   })()`))
   if (!b) return console.log(`    （${name}: 没找到 ${sel}，跳过）`)
-  const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { ...b, scale: 2 } })
+  const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { ...b, scale: SHOT_SCALE } })
   if (r.result?.data) { writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(r.result.data, 'base64')); console.log(`    已拍 ${join(SHOT_DIR, `${name}.png`)}`) }
 }
-// 两个输入框（桌面那格 + 窄屏那一行）同时在 DOM 里，窄屏上**两个都算「看得见」**（那格是 36px 的方形）。
+// 两个输入框（桌面那格 + 窄屏那一行）同时在 DOM 里，窄屏上**两个都算「看得见」**（那格是 36px 的圆盘）。
 // 所以这里取**最后一个**看得见的：DOM 里窄屏那一行排在桌面那格之后，正好是「当前真正在用的那个」。
 // 拿错一个的后果实测过：窄屏上 type() 把字打进了顶栏那枚方形里，而那一枚一获得焦点就把下面那一行关掉。
 const VISIBLE = (sel) => `[...document.querySelectorAll(${JSON.stringify(sel)})].filter((e) => e.offsetParent !== null).pop()`
-// 顶栏那枚方形（桌面那格输入框）：窄屏点它＝开/关下面那一行，桌面上点它＝就地长开。
+// 顶栏那枚圆盘（桌面那格输入框）：窄屏点它＝开/关下面那一行，桌面上点它＝就地长开。
 const SQUARE = '.search-field-wide .search-input'
 // 真鼠标点击（点那枚方形图标＝点输入框本身；也用来点「框外」）：不是 el.click()，那样不会走
 // 真实的 focus/blur 路径，而「失焦收起」这条正是要靠它。
@@ -282,12 +288,20 @@ const EXPECT = [
 console.log('\n一、桌面 1440×900（亮色，六台夹具机器）:')
 let m = await goto('/', { w: 1440, h: 900, dark: false })
 console.log('   ' + JSON.stringify({ input: m.input, icon: m.icon, cards: m.count, fleet: m.fleet, vp: m.viewport }))
-// 收起态：一枚 36×36 的方形（输入框本体），无边框、占位文案与词都看不见。
-check('收起时：那一格是 36×36 的方形、排在顶栏右半边、与旁边那排图标同高',
+// 收起态：一枚 36×36 的墨线圆盘（输入框本体），描边／圆角与旁边那几枚图标按钮逐项同款，
+// 底色不填，占位文案与词都看不见。
+check('收起时：那一格是 36×36、排在顶栏右半边、与旁边那排图标同高',
   !!m.input && m.input.w === 36 && m.input.h === 36 && m.input.h === m.themeButton?.h && m.input.x > m.viewport.w / 2 && m.input.right <= m.header.right && m.inputInHeader,
   `rect=${JSON.stringify({ x: m.input?.x, right: m.input?.right, w: m.input?.w, h: m.input?.h })}`)
-check('收起时：无边框（收起态看起来就是一枚图标按钮，不是一只小输入框）',
-  m.borderTransparent === true && m.bgTransparent === true, `border=${m.input?.borderColor} bg=${m.input?.bg}`)
+// ★ 2026-10-30 站长截图报「搜索按钮和搜索框的风格与其他按钮不一致」：这一格当时是块**透明的光板**
+// （1px 浅灰线 + 8px 标准圆角），旁边四枚却是墨线圆盘。现在它按 .sk-icon 的同一套长相画
+// （1.5px 墨线 + 同一组歪圆角），所以这条从「无边框」翻成「与邻座逐项同款」——
+// 两边都是现场算出来的值摆在一起比，不钉死某个色值（换皮肤、明暗切换都不用改这条）。
+check('收起时：描边、圆角与旁边那枚图标按钮**逐项同款**（同一枚墨线圆盘，不是没人管的小输入框）',
+  m.borderTransparent === false && m.bgTransparent === true
+    && !!m.themeButton && m.input?.borderWidth === m.themeButton.borderWidth
+    && m.input?.borderColor === m.themeButton.borderColor && m.input?.radius === m.themeButton.radius,
+  `搜索 ${m.input?.borderWidth} ${m.input?.borderColor} radius=${m.input?.radius}；邻座 ${m.themeButton?.borderWidth} ${m.themeButton?.borderColor} radius=${m.themeButton?.radius}`)
 check('收起时：占位文案不显示（长开时才淡入）', m.placeholderTransparent === true, `::placeholder color=${m.placeholderColor}`)
 check('收起时：词看不见 —— 字色透明（padding 也收紧了，盒子就是 36，不往外顶）',
   m.textTransparent === true && m.input?.w === 36 && m.padding?.l === '10px',
@@ -316,10 +330,14 @@ check('长开用的是 150ms 过渡（与参考站同一档手感）', /0\.15s/.
 check('长开是往**左边**长：右沿一动不动（右边那排图标一枚都没被顶走）',
   opened.input?.right === m.input?.right && (opened.input?.x ?? 0) < (m.input?.x ?? 0),
   `收起 x=${m.input?.x}~${m.input?.right} → 长开 x=${opened.input?.x}~${opened.input?.right}`)
-check('长开时：边框、占位文案、词都出现了（收起态那三样是透明的）',
-  opened.borderTransparent === false && opened.placeholderTransparent === false && opened.textTransparent === false,
-  `border=${opened.input?.borderColor} ::placeholder=${opened.placeholderColor} 字色=${opened.textColor}`)
-check('长开时：焦点圈是一圈 3px（与参考站同量级）', /3px/.test(opened.input?.boxShadow || ''), opened.input?.boxShadow)
+check('长开时：占位文案与词都出现了（收起态这两样是透明的；描边收起时也在，那就是那枚墨线团）',
+  opened.placeholderTransparent === false && opened.textTransparent === false,
+  `::placeholder=${opened.placeholderColor} 字色=${opened.textColor}`)
+// 焦点提示：不用柔光焦点环（那是系统输入框的长相），也不加硬影子（这一排图标都是平的），
+// 改成「同一支笔再压一道」—— 一圈同色的 inset 描边。
+check('长开时：焦点是「同一支笔再压一道」（同色 inset 描边，不是系统那圈柔光焦点环）',
+  /inset/.test(opened.input?.boxShadow || '') && !!opened.input?.borderColor && (opened.input?.boxShadow || '').includes(opened.input.borderColor),
+  opened.input?.boxShadow)
 check('长开时：放大镜仍在输入位置之前（左沿 10px，文字从 32px 起）',
   !!opened.icon && !!opened.input && Math.abs((opened.icon.x - opened.input.x) - 10) <= 1 && opened.contentWidth > 100,
   `图标 x=${opened.icon?.x} 框 x=${opened.input?.x}；内容区 ${opened.contentWidth}px`)
@@ -367,7 +385,7 @@ if (!REAL) {
   await type('东京')
   await clickAt(300, 30)   // 顶栏里、站名与图标之间那段空白：安全区（那里没有任何点击处理）
   const blurred = await probe()
-  check('点框外（失焦）：收回到 36px 的方形', blurred.input?.w === 36 && blurred.input?.focused === false, JSON.stringify(blurred.input))
+  check('点框外（失焦）：收回到 36px 的圆盘', blurred.input?.w === 36 && blurred.input?.focused === false, JSON.stringify(blurred.input))
   check('失焦收起后**词留着**：列表还筛着那两台，输入框里也还是「东京」',
     blurred.value === '东京' && blurred.count === 2, `value=${JSON.stringify(blurred.value)} 卡片 ${blurred.count}`)
   check('收起态那枚图标的颜色不随「有没有词」变（始终与邻座同色）', blurred.icon?.color === m.icon?.color, `空 ${m.icon?.color} → 有词 ${blurred.icon?.color}`)
@@ -381,7 +399,7 @@ if (!REAL) {
     esc1.value === '' && esc1.input?.w === 240 && esc1.count === 6, `value=${JSON.stringify(esc1.value)} 框宽 ${esc1.input?.w}`)
   await key('Escape', 'Escape', 27)
   const esc2 = await probe()
-  check('Esc 第二下：收起（回到 36px 的方形）', esc2.input?.w === 36 && esc2.input?.focused === false, JSON.stringify(esc2.input))
+  check('Esc 第二下：收起（回到 36px 的圆盘）', esc2.input?.w === 36 && esc2.input?.focused === false, JSON.stringify(esc2.input))
   // 搜着的时候进详情页再回来：词与结果都该留着（与分组、地区同一套记忆）。
   await type('东京')
   await js('document.querySelector(\'[data-card-style] > [data-slot="card"]\').click()')
@@ -461,7 +479,7 @@ if (!REAL) {
 
 console.log('\n二、窄屏 390×844（亮色）:')
 m = await goto('/', { w: 390, h: 844, dark: false, mobile: true })
-check('窄屏：顶栏那格仍是那枚 36×36 的方形（窄屏不长开，长开式样只在 ≥640px 生效）',
+check('窄屏：顶栏那格仍是那枚 36×36 的墨线圆盘（窄屏不长开，长开式样只在 ≥640px 生效）',
   !!m.input && m.input.w === 36 && m.input.h === 36 && m.input.rendered && m.inputInHeader,
   JSON.stringify(m.input))
 check('窄屏：一开始没有那一行（没展开）', m.row === null, `row=${JSON.stringify(m.row)}`)
@@ -500,7 +518,7 @@ if (!REAL) {
 }
 await clickSquare()
 m = await probe()
-check('窄屏再点那枚方形图标：收起这一行', m.row === null && m.input?.w === 36, `row=${JSON.stringify(m.row)}`)
+check('窄屏再点那枚圆盘图标：收起这一行', m.row === null && m.input?.w === 36, `row=${JSON.stringify(m.row)}`)
 check('窄屏：没有横向溢出', m.overflow <= 0, `scrollWidth − innerWidth = ${m.overflow}`)
 
 console.log('\n三、深色 1440×900:')

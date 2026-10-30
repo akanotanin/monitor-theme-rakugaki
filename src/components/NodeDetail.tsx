@@ -75,9 +75,21 @@ const TABS = [
   { key: "latency", label: "网络延迟" },
 ] as const
 
+/**
+ * 一张资源图 = 一张卡片（`sk-card`：2px 墨线 + 歪圆角 + 硬偏移影子，与列表里那些卡同一副纸感）。
+ *
+ * ★2026-10-30 站长反馈「给详情页的曲线图也加上卡片」：此前这五张图是**裸图**——标题一行、
+ * 图直接画在点阵纸面上，全靠留白分块。同一页里上面的规格区是散的、下面的图表也是散的，
+ * 整页只有列表页有卡，看起来像「图表还没排完版」。包进卡片后每张图自带一个落点，
+ * 五张卡与列表页的卡片是同一套笔触；★但圆角**不**沿用 `.sk-card:nth-child(2n)` 的奇偶交替：
+ * 那是给网格里并排的卡片用的，竖排整宽卡交替后相邻两张弧向相反（1/3/5 与 2/4 互为镜像），
+ * 而且 nth-child 落在会被条件渲染推动的容器上 —— 加一条备注就能让同一张卡翻面。改用
+ * `.sk-card-panel` 那一组固定半径（见 index.css）。
+ * 内边距 16px、图高仍是 160（h-40）不动：变的只是外面多了一层纸。
+ */
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="sk-card sk-card-panel p-4">
       <h4 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h4>
       <div className="h-40 w-full text-muted-foreground">{children}</div>
     </div>
@@ -549,7 +561,10 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
                 ? { height: `calc(100svh - ${Math.round(chartTop)}px - 1rem)` }
                 : undefined
             }
-            className={embedded ? "flex h-72 flex-col gap-3" : "flex min-h-72 flex-col gap-3"}>
+            // ★整页这条（sk-card）的 min-h 是 20.25rem = 288 + 36：`min-h-72` 原本标定的是
+            //   「图自己的底高」，包上 2px 边框 + 16px 内边距之后，同样的 288 会让图矮 36px
+            //   （实测 390 宽下整页详情的图比列表里就地展开的那张还矮）。
+            className={embedded ? "flex h-72 flex-col gap-3" : "sk-card sk-card-panel flex min-h-[20.25rem] flex-col gap-3 p-4"}>
             {/* `min-h-0` is what makes `flex-1` a real number rather than the
                 content's own height: ResponsiveContainer reads its parent, and
                 a flex child not told it may shrink reports whatever the SVG

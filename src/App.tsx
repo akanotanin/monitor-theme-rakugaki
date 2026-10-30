@@ -69,6 +69,19 @@ const NodeDetail = lazy(loadDetail)
  *      —— ③④ 都照 ① 的同一手法由调用方传入。
  */
 function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling = false }: { hasRemarks?: boolean; hasConnections?: boolean; hasBilling?: boolean }) {
+  // ★地址里带 `?tab=latency` 这条路真实存在（卡片的延迟读数 → openNode(id,'latency')），而下面的
+  //   骨架恒画五张资源卡：加载完会从五张塌成一张（实测 1280×900 塌 691px，卡片化之后每张
+  //   多 36px，比之前还多塌 180px）。这里认一下地址，按页签画一张按视口撑开的卡 ——
+  //   chartTop 会随「这台有没有备注」变，所以只能近似（±40px），但不再有五次塌陷。
+  const latencyTab =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "latency"
+  if (latencyTab) {
+    return (
+      <div className="sk-card sk-card-panel p-4" style={{ height: "calc(100svh - 24rem)" }}>
+        <Skeleton className="h-full w-full" />
+      </div>
+    )
+  }
   return (
     <div className="detail-skeleton space-y-4" aria-busy="true">
       <div className="flex items-center gap-2">
@@ -105,10 +118,15 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling
       </div>
       {/* 五张资源图：整页详情的默认页签就是它，所以骨架照它的高度来
           （2026-10-17 与 jikasei 1.33.0 同步：网络速率 / TCP·UDP 连接 / CPU / 内存 / 硬盘）。
-          ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。 */}
+          ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。
+          ★2026-10-30 起每张图外面多了一层 `sk-card`（站长要的卡片），骨架必须一起换成卡形：
+          骨架与真实页高度差太多的话，加载完那一下会整页跳（verify_detail_preload 量这个 ——
+          ★它只覆盖资源页签，`?tab=latency` 那条路由上面那段的近似卡兜底）。
+          旧骨架是「Skeleton 自己的虚线描边」冒充纸边；现在直接复用 `sk-card` + 同样的内边距 ——
+          落位前就有纸边，落位后只是把灰条换成墨线与曲线，视觉上不跳。 */}
       <div className="space-y-5">
         {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i}>
+          <div key={i} className="sk-card p-4">
             <Skeleton className="mb-2 h-4 w-16" />
             <Skeleton className="h-40 w-full" />
           </div>
@@ -304,17 +322,19 @@ export default function App() {
   const [globeOn, toggleGlobe] = useGlobeVisible(config.globeOn)
   const [cardStyle, chooseStyle] = useCardStyle(config.cardStyle)
 
-  // 「宽卡」档会把**整页容器**收一档（1280 → 1080，顶栏 / 主区 / 页脚三处共用同一条列线）：
-  // 这一档的六块版式按 1080 容器 × 两列校准（卡片 510，与母主题 jikasei 的宽卡同尺寸）；
-  // 1280 的容器会把卡片拉成 610，四格读数与上传下载两栏都被抻空。只收列表那一块不行——
-  // 顶栏与卡片会各站一条列线（实测错开 ~100px），整页同收才是一条栅格。窄屏（≲1104px）
-  // 容器本来就被视口卡住，这一档在那里不产生差别。
-  const shell = cardStyle === "wide" ? "max-w-[1080px]" : "max-w-[1280px]"
+  // ★2026-10-30 站长反馈「宽卡模式和其他模式格格不入」（这一档现已改名「总览」）：它原先把
+  // **整页容器**收到 1080（卡片 510，与母主题 jikasei 同尺寸）。代价是切到这一档时整页往里缩一圈——顶栏、
+  // 概览、分组标签、卡片全跟着挪，五种形态里只有它换了一条栅格线，翻形态时像是换了个站。
+  // 现在五档共用同一条列线（1280，与顶栏/页脚一致）：总览档的网格与经典档完全同款
+  // （sm 2 / lg 3 / xl 4），1440 上每张 299 —— 四格读数与上传下载两栏按这个宽度量过。
+  // （中间试过「两列各 610」，四格读数被抻得很空，站长否掉了。）
+  // 只收列表那一块的老路子不行：顶栏与卡片会各站一条列线（实测错开 ~100px）。
+  const shell = "max-w-[1280px]"
   // 收起搜索（Esc 在空框上按的那一下）。**不清词**：收起是「让出顶栏那点宽度」，不是「别筛了」
   // —— 词留着，点开一台机器看清了再回来，那几台还在（收起态会看不见词，所以那枚放大镜会提色、
   // 悬停说明里带上词与命中数，见 SearchBox）。
   const collapseSearch = () => setSearchOpen(false)
-  // 窄屏那枚方形图标＝顶栏下面那一行的开关；桌面什么都不用做（CSS 的 :focus-within 自己长开）。
+  // 窄屏那枚墨线圆盘＝顶栏下面那一行的开关；桌面什么都不用做（CSS 的 :focus-within 自己长开）。
   // 用 matchMedia 而不是把它存成 state：这里只在事件里问一次，没必要为它挂一条媒体查询订阅。
   const onSearchActivate = () => {
     const narrow = typeof matchMedia === "function" && matchMedia("(max-width: 639px)").matches
@@ -530,7 +550,7 @@ export default function App() {
           </button>
           <div className="flex-1" />
           {/* 搜索（名称 / 地区 / 系统）：只长在列表页 —— 它收窄的就是下面那张列表，
-              站在某台机器的详情页里按它没有落点。收起时是一枚方形图标，点开就地长成输入框
+              站在某台机器的详情页里按它没有落点。收起时是一枚 36px 的墨线圆盘（与旁边几枚图标同款），点开就地长成输入框
               （窄屏是顶栏下面多一行，见 SearchRow）。 */}
           {open === null && (
             <SearchBox
@@ -631,7 +651,7 @@ export default function App() {
           )
         ) : !nodes ? (
           // 还在等节点列表：骨架按当前形态画。紧凑形态是一行一台，用几根细条比三张大卡片更像它；
-          // 宽卡形态一行两张、卡片也矮一档（~216 高），网格与高度都照它来。
+          // 总览形态与经典档同网格，高度也照它来。
           cardStyle === "compact" ? (
             <div className="space-y-2">
               {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -639,9 +659,11 @@ export default function App() {
               ))}
             </div>
           ) : cardStyle === "wide" ? (
-            <div className="grid gap-3 md:grid-cols-2">
+            // ★2026-10-30 总览卡改成四列小卡（1440 上 299×248），骨架照它来：
+            //   高度与列数对不上，加载完那一下整页会跳（真卡实测 247.5，这里 248）。
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-56" />
+                <Skeleton key={i} className="h-[248px]" />
               ))}
             </div>
           ) : (
@@ -832,7 +854,7 @@ function NodeList({ view, group, onGroup, onOpen, onWarm, latencyLines, cardStyl
       ) : cardStyle === "compact" ? (
         <CompactList nodes={list} onOpen={onOpen} onWarm={onWarm} historyDays={historyDays} remarkPlacement={remarkPlacement} terms={terms} cursorId={cursorId} />
       ) : cardStyle === "wide" ? (
-        <div data-card-style="wide" className="grid items-start gap-3 md:grid-cols-2">
+        <div data-card-style="wide" className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {list.map((n) => (
             <WideCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} remarkPlacement={remarkPlacement} terms={terms} selected={n.id === cursorId} />
           ))}

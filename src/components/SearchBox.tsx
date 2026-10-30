@@ -5,9 +5,11 @@ import { useRef } from "react"
  * 顶栏右上角那个搜索框：按**名称 / 地区 / 系统**把列表收窄到要看的那几台
  * （口径全在 `@/lib/search`，UI 只负责把词交出去）。
  *
- * 形态与手感：**收起时是一枚 36×36 的方形图标**（与旁边那几枚同规格：无边框、悬停一层浅底、
- * 放大镜正好居中），**点它就地长开成 240px 的输入框** —— 往**左边**长（右边那几枚图标一枚都不动，
- * 多出来的宽度由站名与图标之间那段空白吸收），边框、占位文案、焦点圈在这 150ms 里一起淡入；
+ * 形态与手感：**收起时是 36×36 的一枚墨线圆盘**（与旁边那几枚图标按钮同一副长相：1.5px 墨线 +
+ * 四个角各不相同的歪圆角、悬停垫一层暖纸底，放大镜正好居中），**点它就地长开成 240px 的输入框**
+ * —— 往**左边**长（右边那几枚图标一枚都不动，多出来的宽度由站名与图标之间那段空白吸收），
+ * 占位文案、词色与内边距在这 150ms 里渐变（过渡列在 index.css 的 .search-input 上）、
+ * 描边同时加重一档（＝「这一格正被写着」）；
  * 失焦再收回去（CSS 的 `:focus-within` 驱动，见下面 Field 的 className），**词留着**。
  *
  * 词留着是刻意的：搜索是「这一眼看哪几台」，点开一台机器看清了再回来，那几台理应还在。
@@ -27,7 +29,7 @@ import { useRef } from "react"
 export function SearchBox({ value, onChange, onActivate, onClose, hits, onMove, onEnter }: {
   value: string
   onChange: (next: string) => void
-  /** 焦点落到框里（＝点了那枚方形图标）：桌面上什么都不用做（CSS 自己长开）；窄屏＝把那一行开/关。 */
+  /** 焦点落到框里（＝点了那枚墨线圆盘）：桌面上什么都不用做（CSS 自己长开）；窄屏＝把那一行开/关。 */
   onActivate: () => void
   /** 收起（Esc 在空框上按的那一下）。 */
   onClose: () => void
@@ -83,9 +85,10 @@ export function SearchRow({ value, onChange, onClose, onMove, onEnter }: {
  * 那条规则写在 index.css 的 `.search-field .search-clear` 里）。
  *
  * 两副长相（`variant`）：
- *   square —— 顶栏那格。收起时是一枚方形图标：内边距收紧（px-2.5）、字色与占位文案都透明；
- *             ≥640px 且拿到焦点时松到 px-8、露出一圈边框与焦点圈；<640px 不长开（那一行另开）。
- *   row    —— 窄屏下面那一行里的普通输入框：边框、占位文案、焦点圈一直在。
+ *   square —— 顶栏那格。收起时是一枚墨线圆盘（描边／圆角／悬停底色／焦点加重全在 index.css 的
+ *            `.search-input` 里，与旁边那几枚 `.sk-icon` 同款）：内边距收紧（px-2.5）、字色与
+ *            占位文案都透明；≥640px 且拿到焦点时松到 px-8、描边加重一档；<640px 不长开（那一行另开）。
+ *   row    —— 窄屏下面那一行里的普通输入框：占位文案一直在，描边与圆角同上。
  *
  * 三处刻意的取舍：
  *   ① 收起态**收紧内边距**（`px-2.5`）并让字色透明，长开时再松到 `px-8`：两者都不收的话，
@@ -97,8 +100,8 @@ export function SearchRow({ value, onChange, onClose, onMove, onEnter }: {
  *   ③ `type="search"` 自带的那个小叉由 index.css 的 `::-webkit-search-cancel-button` 关掉，
  *      两个长得差不多、做同一件事的按钮并排只会让人犹豫点哪个。
  */
-const SQUARE_INPUT = "search-input relative z-[1] h-9 w-full min-w-0 rounded-md border border-transparent bg-transparent px-2.5 text-sm text-transparent outline-none transition-all placeholder:text-transparent hover:bg-accent focus:bg-transparent sm:focus:border-input sm:focus:px-8 sm:focus:text-foreground sm:focus:ring-[3px] sm:focus:ring-ring/30 sm:focus:placeholder:text-muted-foreground dark:hover:bg-accent/50"
-const ROW_INPUT = "search-input relative z-[1] h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-8 text-sm outline-none transition-all placeholder:text-muted-foreground focus:ring-[3px] focus:ring-ring/30"
+const SQUARE_INPUT = "search-input relative z-[1] h-9 w-full min-w-0 px-2.5 text-sm text-transparent outline-none placeholder:text-transparent sm:focus:px-8 sm:focus:text-foreground sm:focus:placeholder:text-muted-foreground"
+const ROW_INPUT = "search-input relative z-[1] h-9 w-full min-w-0 px-8 text-sm outline-none placeholder:text-muted-foreground"
 
 function Field({ value, onChange, onActivate, onClose, onMove, onEnter, autoFocus, className, title, variant = "square" }: {
   value: string
@@ -169,7 +172,7 @@ function Field({ value, onChange, onActivate, onClose, onMove, onEnter, autoFocu
       {value !== "" && (
         <button
           type="button"
-          className="search-clear tap tap-y-6 absolute right-1.5 z-[2] size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="search-clear tap tap-y-6 absolute right-1.5 z-[2] size-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           onClick={() => {
             onChange("")
             // 清完把焦点留在框里：接着打下一个词不用再点一次。

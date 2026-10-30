@@ -7,10 +7,16 @@ import { remarkChips } from "@/lib/notes"
 import { remarksOnCards, type RemarkPlacement } from "@/lib/site-settings"
 
 /**
- * 「宽卡」那一档的卡片（在收成 1080 的整页容器里两列铺开、每张 510 宽 —— 容器收窄与
- * 卡片同属这一档，见 App 的 shell）。
+ * 「总览」那一档的卡片（四列小卡、与经典档同宽：1440 上每张 299×248；整页容器 1280）。
+ * ★2026-10-30 起不再把整页收到 1080（那会让切档时整页缩一圈，站长报「格格不入」）；
+ *   网格与经典档完全同款（sm 2 / lg 3 / xl 4），1440 上就是 299 —— 下面六块按这个宽度量过。
  *
- * 版式与母主题（jikasei）的宽卡逐块对齐，穿的是本皮肤自己的衣服。从上到下六块：
+ * 2026-10-30 按站长那张单卡设计图的**版式**重排（旗子套小方框、四个读数表名在上/读数在下、
+ * 段间虚线），**尺寸仍是小卡片这一档**：名字 15 / 表名 11 / 读数 13 / 条 7，
+ * 外框／影子／进度条也全是本皮肤那一套（.sk-card / .sk-bar）。
+ * ★13px 的读数是**未分层规则**顶出来的（index.css 的 `[data-card-style="wide"] .wc-value`）：
+ *   299 宽的卡内容盒 263 ≤ 288，会命中窄卡那段容器查询把 `.tnum` 压回 11px；速率同理（.wc-rate）。
+ * 从上到下六块：
  *   ① 身份行：旗子 + 名字；
  *   ② 一行灰字：系统 · 在线时长（四种处境各自的写法见 metaLine）；
  *   ③ 四个读数格：CPU / 内存 / 硬盘 / 负载（上面一条虚线分隔，见 Readout）；
@@ -87,21 +93,25 @@ const CHIPS = 3
 /**
  * 一个读数格：表名在上、读数在中、条在下 —— 卡片上四个格子（CPU / 内存 / 硬盘 / 负载）都是它。
  *
- * 表名是弱化灰的小字（12px），读数 13px / 600（那一格的重心），条压在读数下缘、铺满整格宽。
+ * 表名是弱化灰的小字（11px），读数 13px / 600（那一格的重心），条 7px 压在读数下缘、铺满整格宽。
  * ★ 条就是 `.sk-bar` 本体（与 Meter 同一副墨线槽 + 收笔毛边）；快满 85% 转陶土橙，
  *   阈值与 Meter 共用一条规矩（四条读数都是「越满越该看一眼」）。
  *
  * `pct` 为 null（这台没上报 / 这一项没有上限）时轨道留空、不画填色，读数由调用方写成「—」：
  * 一条 0% 的实心条会被读成「用得很少」，而真相是「不知道」。
  */
+const pctText = (v: number) => `${v < 10 ? v.toFixed(1) : v.toFixed(0)}%`
+
 function Readout({ label, value, pct, title }: { label: string; value: string; pct: number | null; title?: string }) {
   const filled = pct === null ? 0 : Math.min(100, Math.max(0, pct))
   const hot = pct !== null && filled >= 85
   return (
     <div className="min-w-0" title={title}>
-      <div className="truncate text-xs text-muted-foreground">{label}</div>
-      <div className="tnum mt-0.5 truncate text-[13px] font-semibold leading-[18px]">{value}</div>
-      <div className={`sk-bar mt-1 h-1.5 w-full${hot ? " sk-bar-hot" : ""}`}>
+      {/* 表名在上、读数在下、条压在最底下 —— 版式照站长那张图，尺寸照小卡片这一档
+          （表名 11 / 读数 13 / 条 7；读数字号见 .wc-value 那条未分层规则）。 */}
+      <div className="truncate text-[11px] text-muted-foreground">{label}</div>
+      <div className="wc-value tnum mt-0.5 truncate font-semibold leading-[16px]">{value}</div>
+      <div className={`sk-bar mt-1 h-[7px] w-full${hot ? " sk-bar-hot" : ""}`}>
         <div className="sk-bar-fill h-full" style={{ width: `${filled}%` }} />
       </div>
     </div>
@@ -143,15 +153,22 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
       // data-selected 是「当前被键盘选中」的标记（护栏读它，不用去解析类名）。
       data-node-card={node.id}
       data-selected={selected ? "1" : undefined}
-      className={`sk-lift min-w-0 cursor-pointer gap-0 px-4 py-3 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
+      className={`sk-lift min-w-0 cursor-pointer gap-0 px-4 pt-3 pb-3.5 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
     >
       {/* ① 身份行：旗子 + 名字。不带状态点、不带徽章——在线与否写在②那行文字里。
           名字的字体规格照 NodeCard 那张（font-display 15px/600），一排卡片里是同一支笔。 */}
-      <div className="flex min-w-0 items-center gap-2">
-        <Country node={node} />
+      <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+        {/* 旗子外面套一圈小方框（照站长那张图）。★只在真有国家码时才画：没有国家码时
+            Country 返回 null，无条件渲染会剩一个 5×5 的空描边方块（实测）。
+            底色用 `bg-card` —— `bg-elev` 在本项目的 @theme 里没有对应 token，构建出来是空类。 */}
+        {node.country ? (
+          <span className="inline-flex shrink-0 items-center justify-center rounded-[4px] border-[1.5px] border-line-strong bg-card p-[1.5px]">
+            <Country node={node} />
+          </span>
+        ) : null}
         <h3 className="font-display min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-.01em]"><TextHighlight text={node.name} terms={terms} /></h3>
       </div>
 
@@ -170,19 +187,19 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
               label="CPU"
               title={`${node.cpu_cores} 核`}
               pct={m ? m.cpu : null}
-              value={m ? `${m.cpu.toFixed(2)}%` : "—"}
+              value={m ? pctText(m.cpu) : "—"}
             />
             <Readout
               label="内存"
               title={m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total)}
               pct={m ? percent(m.mem_used, m.mem_total) : null}
-              value={m ? `${percent(m.mem_used, m.mem_total).toFixed(2)}%` : "—"}
+              value={m ? pctText(percent(m.mem_used, m.mem_total)) : "—"}
             />
             <Readout
               label="硬盘"
               title={m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total)}
               pct={m ? percent(m.disk_used, m.disk_total) : null}
-              value={m ? `${percent(m.disk_used, m.disk_total).toFixed(2)}%` : "—"}
+              value={m ? pctText(percent(m.disk_used, m.disk_total)) : "—"}
             />
             {/* 负载：读数是 1 分钟均值，条按「满载的几成」上色（见 loadPct），三条均值在悬停说明里。 */}
             <Readout
@@ -199,18 +216,18 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
               `data-net="duo"` 是给护栏认这一块用的锚点。 */}
           <div data-net="duo" className="tnum mt-2.5 grid grid-cols-2 border-t-[1.5px] border-dashed border-line-strong pt-2">
             <div className="min-w-0 pr-3">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="shrink-0 text-muted-foreground">↑ 上传</span>
-                <span className="min-w-0 truncate text-muted-foreground">累计 {bytes(node.total_tx)}</span>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="shrink-0 text-[11px] text-muted-foreground">↑ 上传</span>
+                <span className="min-w-0 truncate text-[10px] text-muted-foreground">累计 {bytes(node.total_tx)}</span>
               </div>
-              <div className="tnum mt-0.5 truncate text-sm font-semibold leading-[18px]">{m ? rate(m.net_tx) : "—"}</div>
+              <div className="wc-rate tnum mt-0.5 truncate text-[14px] font-semibold leading-[16px]">{m ? rate(m.net_tx) : "—"}</div>
             </div>
             <div className="min-w-0 border-l-[1.5px] border-dashed border-line-strong pl-3">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="shrink-0 text-muted-foreground">↓ 下载</span>
-                <span className="min-w-0 truncate text-muted-foreground">累计 {bytes(node.total_rx)}</span>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="shrink-0 text-[11px] text-muted-foreground">↓ 下载</span>
+                <span className="min-w-0 truncate text-[10px] text-muted-foreground">累计 {bytes(node.total_rx)}</span>
               </div>
-              <div className="tnum mt-0.5 truncate text-sm font-semibold leading-[18px]">{m ? rate(m.net_rx) : "—"}</div>
+              <div className="wc-rate tnum mt-0.5 truncate text-[14px] font-semibold leading-[16px]">{m ? rate(m.net_rx) : "—"}</div>
             </div>
           </div>
 
@@ -235,9 +252,11 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
               与母主题 jikasei 同日同款）；小卡片也收成紧凑档，塞得进这一行、不再把整卡撑高。
               `data-remark="card"` 是护栏的锚点（与详细档标题行的 `data-remark="title"` 分开）。 */}
           <div className="mt-1.5 flex h-4 min-w-0 items-center justify-between gap-2">
-            <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
+            <span title={note} className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
+            {/* ★备注给它一个硬上限（6.5rem）：三枚备注实测 182px，会把左边的「价格 · 到期」
+                挤到 60–66px、到期那截直接看不见（299 宽的卡里这一行总共才 263px）。 */}
             <span data-remark="card" className="flex min-w-0 shrink items-center justify-end gap-1">
-              <RemarkChips chips={chips} compact />
+              <RemarkChips chips={chips} compact max="6.5rem" />
             </span>
           </div>
         </>

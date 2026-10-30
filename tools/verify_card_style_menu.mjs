@@ -218,7 +218,7 @@ const shapeOk = (st, style) => {
   return true
 }
 const shapeWhy = (st) => `卡 ${st.cards} 张 / net-grid=${st.netGrid} net-row=${st.netRow} duo=${st.duo} 读数格=${st.metrics} latency=${st.latency} meta=${st.meta} table=${!!st.tableHead}`
-const LABELS = { classic: '经典', plain: '简约', latency: '延迟', detailed: '详细', wide: '宽卡', compact: '紧凑' }
+const LABELS = { classic: '经典', plain: '简约', latency: '延迟', detailed: '详细', wide: '总览', compact: '紧凑' }
 
 console.log('\n=== 一、站长设置 = 简约（默认档），访客没选过 ===')
 let s = await open()

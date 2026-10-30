@@ -155,7 +155,9 @@ const PROBE = `(() => {
     const xs = texts.filter((t) => t.getAttribute('text-anchor') === 'middle').map((t) => t.textContent)
     const paths = svg ? [...svg.querySelectorAll('path')] : []
     const rect = svg ? svg.getBoundingClientRect() : null
-    const chartBox = box.querySelector('div')
+    // ★锚点别用「卡里第一个 div」：那是「h4 与图之间没有别的 div」这个巧合，加一行标题/徽章
+    //   就会静默量错盒子、断言还是绿的。改成「标题下面那个装着 svg 的 div」。
+    const chartBox = [...box.querySelectorAll('div')].find((d) => d.querySelector('svg')) || null
     return {
       title: (h.textContent || '').slice(0, 14),
       chartH: chartBox ? Math.round(chartBox.getBoundingClientRect().height) : 0,

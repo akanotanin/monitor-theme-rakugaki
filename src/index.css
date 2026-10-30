@@ -326,6 +326,25 @@
 .sk-lift:hover { transform: translate(-1px, -1px) rotate(-.6deg); border-color: var(--accent-2); }
 .sk-lift:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 
+/* 总览档的读数与速率：13px / 14px 加粗（读数比表名 11px 大一档，速率是那一块的重心）。
+   ★这两条必须写在未分层里、且带上 [data-card-style]：窄卡那段容器查询（内容盒 ≤288px 时
+   `.tnum { font-size: 11px }`）会把 4 列里的读数与速率一起压到 11px —— 那是给经典/延迟几档的
+   「防折行」降档，而 299 宽的卡内容盒只有 263px，一定命中。2026-10-30 实测：速率被压成 11px，
+   比读数还小（桌面上反而比手机小）。
+   ★外框没有第二套：总览卡与其余几档一样，只有 .sk-card 那层 2px 墨线 + --r-card 歪圆角。 */
+[data-card-style="wide"] .wc-value { font-size: 13px; }
+[data-card-style="wide"] .wc-rate { font-size: 14px; }
+
+/* 详情页里那几张「整宽卡」（五张图表卡 + 延迟卡）：同一条纸边，但两处收紧。
+   ① 不要奇偶交替：`.sk-card:nth-child(2n)` 是给网格里并排的卡片用的，竖着一条列下来的
+      整宽卡交替后，相邻两张的弧向相反（1/3/5 与 2/4 互为镜像）；更糟的是那个 nth-child
+      落在会被条件渲染推动的容器上 —— 同一张卡会因为「这台机器有没有备注」翻面（实测）。
+   ② 半径按高度封顶：--r-card 的 220px 竖向半径在 220px 高的整宽卡上要吃掉 91% 的边
+      （列表卡只有 299 宽，同一组 token 读起来只是「纸边微歪」）。这里改用一组固定的手画半径，
+      任何宽度都成立。选择器写两个类（0,2,0）且排在 nth-child 那条之后，才压得住它。 */
+.sk-card.sk-card-panel { border-radius: 18px 26px 16px 24px / 24px 16px 26px 18px; }
+
+
 /* 窄卡里的读数层整体降一档（容器查询，内容盒 ≤288px 时生效）。
    12px 下最坏形状（↓ 999.9 KB/s ↑ 999.9 KB/s ＋ ↓ 999.9 GB ↑ 999.9 GB）需宽 ~287px，
    而 4 列桌面卡里只有 259-263px、最窄两列 247px——2026-10-14 站长截图正是这个临界带：
@@ -734,6 +753,47 @@
       再挤一枚叉就成了「两枚图标叠在一起」。展开／收起的动效由 `transition-all` 负责。 */
 .search-input::-webkit-search-cancel-button,
 .search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+
+/* ★ 搜索框的**长相**与旁边那几枚图标按钮（.sk-icon）是同一支笔：1.5px 墨线、四个角各不相同的
+   椭圆（--r-blob）、悬停一层暖纸底。描边／圆角／底色都写在**输入框自己**身上（不是外面那层
+   span）：36×36 的盒子仍得是输入框的盒子，收起态的几何与命中断言按它量
+   （tools/verify_touch_targets.mjs）。
+   此前这一格是「1px 浅灰线（--input）+ 8px 标准圆角 + 陶土色焦点环 + 浅色填充」——整排图标里
+   只有它不是手画的，站长发截图报「搜索按钮和搜索框的风格与其他按钮不一致」（2026-10-30）。
+   现在收起＝一枚 36px 的墨线圆盘（与旁边逐项同款），长开成 240px 时同一组百分比歪圆角摊成
+   两端收圆的长条（50% 在 36px 宽上是圆盘、在 240px 宽上就是半椭圆端头）：两者是同一枚笔迹的
+   两副形态，过渡里只变宽、不变形。
+   ★调用处不要再写 border-* / rounded-* / bg-*（本条未分层，会静默压掉那些工具类）；
+     只留布局与字号类（h-9 / px-* / text-sm 这类）。
+   三件**没有**跟着邻居一起搬过来的：
+   · 悬停那记「转 -6°」：这一格收起 36px、长开 240px，同一个 transform 在两副形态里意味完全不
+     同；而且几何断言按 getBoundingClientRect 量「收起仍是 36×36」，转 6° 的外接矩形会涨到 40
+     （实测），等于把断言变成噪声。手绘感由描边与歪圆角给，不靠这一下旋转。
+   · 系统输入框那圈柔光焦点环：改成「同一支笔再压一道」，见下面 :focus-within。
+   · 硬影子：这一排图标本来就是平的，焦点不该让这一格比邻居多浮起一层（试过 3px 硬影子：
+     一眼能看出是它，但整排里只有它带影子）。 */
+.search-input {
+  border: 1.5px solid var(--stroke);
+  border-radius: var(--r-blob);
+  background: transparent;
+  /* ★ 不给 `color`：收起态靠 Tailwind 的 `text-transparent` 把词藏起来，长开时再回到前景色。
+     在这里写死一个颜色（0,1,0 的未分层规则）会压过那个工具类 —— 收起时词就露出来了（实测）。 */
+  /* 底色、焦点描边、词色与内边距一起过渡：收起→长开时那 10px→32px 的内边距与
+     「词从透明到前景色」若不留过渡，会是两下瞬跳（2026-10-30 去掉调用处的 transition-all
+     后实测到的）。 */
+  transition: background-color .15s ease, box-shadow .15s ease, color .15s ease, padding .15s ease;
+}
+.search-field:hover .search-input { background: var(--paper-warm); }
+/* 焦点：**同一支笔再压一道** —— 外圈 1.5px + 内圈 1.5px 的 inset 描边（合计约 3px，比邻居重
+   一档；0.5px 那版在 1× 屏上被抗锯齿摊成半个灰像素，键盘用户看不出焦点在哪，2026-10-30 审读
+   实测「聚焦前后只差 0.5px 同色」）。用 inset 而不是改 border-width：盒子尺寸一个像素都不动，
+   字也不会跟着挪 —— 46px 的命中区断言（verify_touch_targets）因此不受影响。
+   底色回到透明：悬停那层暖底是「还没点」的提示。 */
+.search-field:focus-within .search-input {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--stroke);
+}
+
 /* ★ position: absolute 必须写在这里（而不是只写在组件的类名里）：组件类名里的 `absolute`
    是 Tailwind 的分层工具类，而 `.tap` 的 `position: relative`（本文件、未分层）在级联顺序上
    压过它 —— 按钮于是落回 flex 流、被满宽的 input 顶到容器右缘之外（2026-10-12 站长实拍：
