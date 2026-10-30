@@ -690,7 +690,7 @@ for (const [cfg, tag] of [[{}, 'empty'], [{ cardStyle: 'bogus' }, 'bogus']]) {
   check('紧凑：展开行留有去整页详情的入口', state.detailLink === true, raw)
 }
 
-/* 7) 总览形态：四列小卡（与经典档同宽）+ 与其余五档同一条列线（1280） */
+/* 7) 宽卡形态：一行三张（403×~216，与母主题 jikasei 的宽卡同一档）+ 与其余五档同一条列线（1280） */
 const WIDE_PROBE = `JSON.stringify((() => {
   const box = (el) => { const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), w: Math.round(r.width), h: Math.round(r.height) } }
   const grid = document.querySelector('[data-card-style="wide"]')
@@ -709,8 +709,8 @@ const WIDE_PROBE = `JSON.stringify((() => {
     duo: document.querySelectorAll('[data-net="duo"]').length,
     metrics: document.querySelectorAll('[data-metrics]').length,
     latency: document.querySelectorAll('[data-latency]').length,
-    // 读数格的字号与条高：固定 11 / 13 / 7（2026-10-30 收成四列小卡之后的实测值；先前那版按
-    // 卡宽等比放大的方案已被站长否掉）。
+    // 读数格的字号与条高：固定 12 / 13 / 5（2026-10-31 宽卡回到三列之后的实测值：表名与母主题
+    // 同为 12px，条是纸面那条 1.5px 墨线槽能撑住的最细一档）。
     readout: (() => {
       const cell = document.querySelector('[data-metrics] > div')
       if (!cell) return null
@@ -755,13 +755,16 @@ async function renderWide(cfg, width, tag) {
 
 {
   const { dom, ping } = await renderWide({ cardStyle: 'wide', listTop: 'none' }, 1440, 'wide')
-  check('总览：四列（1440 上四列，与经典档同网格）', dom.gridCols === 4, `列 ${dom.gridCols}`)
+  check('宽卡：三列（1440 上三列，每张约 403）', dom.gridCols === 3, `列 ${dom.gridCols}`)
   check('★ 宽卡：与其余五档同一条列线（1280）—— 顶栏 / 主区 / 页脚三处对齐',
     dom.shell.header.l === dom.shell.main.l && dom.shell.main.l === dom.shell.footer.l &&
     dom.shell.header.r === dom.shell.main.r && dom.shell.main.r === dom.shell.footer.r &&
     dom.shell.main.r - dom.shell.main.l === 1280,
     JSON.stringify(dom.shell))
-  check('总览：卡片 299 宽（1280 容器 × 四列）', Math.abs(dom.card.w - 299) <= 2, `卡 ${dom.card.w}×${dom.card.h}`)
+  // 403×~216：与母主题 jikasei 的宽卡同一尺寸（纸面这边的 1.5px 虚线 + 稍厚的墨线条会多 2px，
+  // 所以高度给 ±4 的容差）。
+  check('宽卡：卡片 403 宽 / 约 216 高（1280 容器 × 三列）',
+    Math.abs(dom.card.w - 403) <= 2 && Math.abs(dom.card.h - 216) <= 4, `卡 ${dom.card.w}×${dom.card.h}`)
   check('宽卡：四格读数 + 上传下载两栏的结构锚点 × 有读数的卡数', dom.metrics === dom.cardsWithCells && dom.duo === dom.cardsWithCells, `metrics=${dom.metrics} duo=${dom.duo} 有读数卡=${dom.cardsWithCells}`)
   check('宽卡：有读数的卡每张 5 条 sk-bar（四格 + 总流量），填充都带收笔毛边（clip-path polygon）',
     dom.bars === 5 * dom.cardsWithCells && dom.barClips, `条 ${dom.bars} / 毛边 ${dom.barClips}`)
@@ -777,19 +780,19 @@ async function renderWide(cfg, width, tag) {
     cmp.shell.footer.l === dom.shell.footer.l && cmp.shell.footer.r === dom.shell.footer.r,
     `wide ${JSON.stringify(dom.shell.main)} vs latency ${JSON.stringify(cmp.shell.main)}`)
   // 读数格：表名 11、读数 13（比表名大一档）、条 7 —— 站长那张图的版式，尺寸按经典档的小卡。
-  check('★ 总览：读数格＝表名 11 / 读数 13 / 条 7px',
-    !!dom.readout && dom.readout.label === 11 && dom.readout.value === 13 && dom.readout.barH === 7,
+  check('★ 宽卡：读数格＝表名 12 / 读数 13 / 条 5px',
+    !!dom.readout && dom.readout.label === 12 && dom.readout.value === 13 && dom.readout.barH === 5,
     JSON.stringify(dom.readout))
   // ★ 这两条是 2026-10-30 审读发现的两个真坑：速率被窄卡容器查询压成 11px（比读数还小）、
   // 满载那台「100.00%」比格宽还长被省略号吃掉。夹具里那台 CPU 满载，所以第二条是真数据。
-  check('★ 总览：速率 14px（不被窄卡容器查询压回 11）', dom.rate === 14, `rate=${dom.rate}`)
-  check('★ 总览：读数不被截断（scrollWidth ≤ clientWidth）',
+  check('★ 宽卡：速率 16px（不被窄卡容器查询压回 11）', dom.rate === 16, `rate=${dom.rate}`)
+  check('★ 宽卡：读数不被截断（scrollWidth ≤ clientWidth）',
     dom.readout.valueOverflow !== null && dom.readout.valueOverflow <= 0, `溢出 ${dom.readout.valueOverflow}px`)
   const { dom: m } = await renderWide({ cardStyle: 'wide', listTop: 'none' }, 390, 'wide-m')
-  check('总览窄屏（390）：单列、卡片仍在', m.gridCols === 1 && m.cards > 0, `列 ${m.gridCols} / 卡 ${m.cards}`)
+  check('宽卡窄屏（390）：单列、卡片仍在', m.gridCols === 1 && m.cards > 0, `列 ${m.gridCols} / 卡 ${m.cards}`)
   check('宽卡窄屏：无横向溢出', !m.overflowX)
-  check('★ 总览窄屏：读数格同一套（表名 11 / 读数 13 / 条 7）',
-    !!m.readout && m.readout.label === 11 && m.readout.value === 13 && m.readout.barH >= 5 && m.readout.barH <= 7,
+  check('★ 宽卡窄屏：读数格同一套（表名 12 / 读数 13 / 条 5）',
+    !!m.readout && m.readout.label === 12 && m.readout.value === 13 && m.readout.barH === 5,
     JSON.stringify(m.readout))
 }
 

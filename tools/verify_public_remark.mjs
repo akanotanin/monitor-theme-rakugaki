@@ -770,8 +770,10 @@ const hoursRequested = async () => {
   //   的 X 轴标签（`svg[role="img"]` 里 `text-anchor="middle"` 的那些），不再绑在别人的 DOM 上。
   const ticks = (await json(`JSON.stringify([...document.querySelectorAll('svg[role="img"] text')].filter((t) => t.getAttribute('text-anchor') === 'middle').map((t) => t.textContent.trim()))`)) || []
   const uniq = [...new Set(ticks)]
+  // ★2026-10-31：1.20.0 加了第六张图（进程）之后，6 张 × 6 条 = 36 > 6×5 —— 上限收到 5 倍
+  // 会假红（母主题 jikasei 那边同一条判据取的就是 6 倍）。
   check('保留 365 天：x 轴刻度去重后仍是稀疏的几条（不是每张 52 条糊成一片），且只写到日',
-    uniq.length >= 3 && uniq.length <= 12 && uniq.every((t) => /^[0-9]{2}\/[0-9]{2}$/.test(t)) && ticks.length <= uniq.length * 5,
+    uniq.length >= 3 && uniq.length <= 12 && uniq.every((t) => /^[0-9]{2}\/[0-9]{2}$/.test(t)) && ticks.length <= uniq.length * 6,
     `共 ${ticks.length} 条 / 去重 ${uniq.length} 条：${JSON.stringify(uniq)}`)
   await shot('detail-range-365d-1440')
   delete meExtra.history_days

@@ -2,10 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type 
 import { Activity, ArrowDown, ArrowDownUp, ArrowUp, Gauge, PiggyBank, Server, Wallet } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
+import { DetailScroll } from "@/components/DetailScroll"
+import { TrafficDetail } from "@/components/TrafficDetail"
 import { speedHistory, type Node } from "@/lib/api"
 import { bytes, rate } from "@/lib/format"
 import { useFx } from "@/lib/fx"
-import { budgetOf, cny, fxNote, type BudgetItem } from "@/lib/money"
+import { BUDGET_ROWS, budgetOf, cny, fxNote, type BudgetItem } from "@/lib/money"
 import { summarize, type Fleet } from "@/lib/summary"
 
 /**
@@ -49,17 +51,26 @@ import { summarize, type Fleet } from "@/lib/summary"
  * blur 关。原来的 hint（原生 title）在这条路径上让位给了浮层尾巴里的同一段说明 ——
  * 两套悬停提示叠在一起会打架，而信息一字不少。
  */
-function Block({ icon: Icon, title, hint, detail, children }: {
+function Block({ icon: Icon, title, hint, detail, wide = false, children }: {
   icon: ComponentType<{ className?: string }>
   title: string
   /** 悬停提示：口径说明——月度预算与剩余价值那两个数不是一眼能看懂的，得写清楚。 */
   hint?: string
   /** 给了它可悬停/点开：弹出的浮层内容（口径行由调用方放在 detail 尾巴里）。 */
   detail?: ReactNode
+  /**
+   * 宽浮层（22rem；默认 15rem）。给「今日流量」那张的节点明细用：一行要放
+   * 「旗子 + 名字 + 今日上下行」，下面还要放两枚带时刻的峰值，15rem 会挤成三条。
+   */
+  wide?: boolean
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
+  // ★2026-10-31 与母主题 jikasei 同步：浮层再长也不许吊出视口。开的时候量一次**这块下面还剩
+  //   多少空间**，把高度上限压到「剩下的那点」——矮窗口（1440×420）里 min(24rem, 60vh) 仍会
+  //   顶穿屏幕下沿。`detail` 也在依赖里：今日流量的峰值是逐台回来的，行数长出来要重新量。
+  const popRef = useRef<HTMLSpanElement | null>(null)
   // 开着的浮层：点别处 / Esc 收起（与 NodeCard 那枚浮层同一个做法）。
   useEffect(() => {
     if (!open) return
@@ -72,6 +83,19 @@ function Block({ icon: Icon, title, hint, detail, children }: {
     document.addEventListener("keydown", onKey)
     return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey) }
   }, [open])
+  // 量可用空间并压上限。用 layout effect：改高度发生在同一帧里，看不见浮层先长出来再被压。
+  useLayoutEffect(() => {
+    if (!open) return
+    const pop = popRef.current
+    const host = ref.current
+    if (!pop || !host) return
+    pop.style.maxHeight = "none"                   // 先按自然高度量（CSS 那道上限先让开）
+    const natural = pop.offsetHeight
+    const box = host.getBoundingClientRect()
+    const room = Math.round(window.innerHeight - box.bottom - 8)   // 留 8px 别贴着屏幕边
+    const want = Math.min(natural, 384, Math.round(window.innerHeight * 0.6))
+    pop.style.maxHeight = `${Math.max(120, Math.min(want, room))}px`
+  }, [open, detail])
   return (
     <div
       ref={ref}
@@ -99,9 +123,14 @@ function Block({ icon: Icon, title, hint, detail, children }: {
         //   ① 去掉了原来的 mt-1.5 —— 那段 6px 空隙会让「指针从块下移到浮层」的路上触发
         //      pointerleave，桌面鼠标一往下浮层就闪关（根本摸不进浮层、也滚不动）。现在浮层紧贴
         //      块底，指针全程留在 Block 子树里，悬停不断；视觉上的缓冲由浮层自己的内边距兜着。
-        //   ② 上限高 + 内部滚动写在 index.css 的 .budget-detail 里：min(24rem, 60vh) —— 近百行
-        //      明细也在这一个浮层里滚着看，不会把浮层拖出屏幕。
-        <span data-budget-detail="" className="budget-detail sk-pop absolute left-0 top-full z-20 block w-max max-w-[15rem] space-y-1 px-2.5 py-2 text-xs">
+        //   ② ★2026-10-31 与母主题同步成**三段式**（表头 / 明细 / 尾巴各一节，明细那节自己滚）：
+        //      机器多时表头里的台数与尾巴里的口径会跟着滚出视野。现在表头与尾巴是 flex 的固定项，
+        //      只有中间那节 `detail-scroll` 滚动（纸面滚动条同款）。高度上限写在 index.css。
+        <span
+          ref={popRef}
+          data-budget-detail=""
+          className={`${wide ? "traffic-detail max-w-[22rem]" : "budget-detail max-w-[15rem]"} sk-pop absolute left-0 top-full z-20 flex w-max flex-col text-xs`}
+        >
           {detail}
         </span>
       )}
@@ -109,19 +138,40 @@ function Block({ icon: Icon, title, hint, detail, children }: {
   )
 }
 
-/** 预算卡两枚浮层的内容：逐台明细（金额降序，与 budgetOf 的明细同序）+ 口径行。 */
-function BudgetDetail({ head, items, note }: { head: string; items: BudgetItem[]; note: string }) {
+/**
+ * 预算卡两枚浮层的内容：逐台明细（金额降序，与 budgetOf 的明细同序）+ 口径行。
+ *
+ * ★2026-10-31 与母主题 jikasei 同步：① 尾巴从一整段话收成**两条**（口径一条、汇率一条），
+ *   15rem 宽里不再铺五行；② 机器多时只列前 BUDGET_ROWS 条，剩下的收成「其余 N 台 ≈¥X」一行
+ *   ——逐台相加仍等于卡片面那个合计，数字不丢。
+ */
+function BudgetDetail({ head, items, note, rates }: { head: string; items: BudgetItem[]; note: string; rates: string }) {
+  const shown = items.slice(0, BUDGET_ROWS)
+  const rest = items.slice(BUDGET_ROWS)
+  const restSum = rest.reduce((sum, item) => sum + item.amount, 0)
   return (
     <>
-      {/* 表头带上条数（「各节点月摊 · 87 台」）：浮层能滚了之后，第一眼就知道一共有多少台。 */}
-      <span className="block text-muted-foreground">{head} · {items.length} 台</span>
-      {items.map((item, i) => (
-        <span key={i} data-budget-row="" className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate">{item.name}</span>
-          <span className="tnum shrink-0">≈{cny(item.amount)}</span>
-        </span>
-      ))}
-      <span className="block border-t-[1.5px] border-dashed border-line-strong pt-1 text-muted-foreground">{note}</span>
+      {/* 表头带上条数（「各节点月摊 · 87 台」）：浮层能滚了之后，第一眼就知道一共有多少台；
+          三段式之后它固定在最上面，滚到底也还在。 */}
+      <span data-detail-head="" className="block border-b-[1.5px] border-dashed border-line-strong px-2.5 py-1.5 text-muted-foreground">{head} · {items.length} 台</span>
+      <DetailScroll>
+        {shown.map((item, i) => (
+          <span key={i} data-budget-row="" className="flex items-baseline justify-between gap-3">
+            <span className="min-w-0 truncate">{item.name}</span>
+            <span className="tnum shrink-0">≈{cny(item.amount)}</span>
+          </span>
+        ))}
+        {rest.length > 0 && (
+          <span data-budget-rest="" className="flex items-baseline justify-between gap-3 text-muted-foreground">
+            <span className="min-w-0 truncate">其余 {rest.length} 台</span>
+            <span className="tnum shrink-0">≈{cny(restSum)}</span>
+          </span>
+        )}
+      </DetailScroll>
+      <span data-detail-foot="" className="block border-t-[1.5px] border-dashed border-line-strong px-2.5 py-1.5 text-muted-foreground">
+        <span className="block">{note}</span>
+        <span className="block">{rates}</span>
+      </span>
     </>
   )
 }
@@ -310,10 +360,13 @@ export function SummaryCards({ nodes, group, finance = false, searching = false 
   const series = speedHistory.get(group) ?? []
   // 折算说明：只列真的用到过的币种——各站的账混着 USD / EUR / CNY 记，合起来必须说明口径。
   const note = fxNote(budget.used, budget.skipped, fx)
-  // 「月度预算」与「剩余价值」两段口径文字：没有浮层时它们是原生 title；有浮层时挪进浮层尾巴
-  // （两处同一份，别让口径说岔了）。
-  const monthlyNote = `各节点的价格按计费周期摊到每个月后相加；一次性买断与没填价格的不计入。${note}`
-  const remainingNote = `已经付掉、还没用掉的那一段：价格 × 剩余天数 ÷ 周期天数；无到期日与一次性买断的不计入。${note}`
+  // 「月度预算」与「剩余价值」两段口径文字：没有浮层时它们是原生 title；有浮层时挪进浮层尾巴。
+  // ★2026-10-31 与母主题 jikasei 同步精简：尾巴只留「口径一句 + 汇率一句」，浮层里两条各自成行
+  // （break 落在句号/冒号处，15rem 宽里不再铺五行）。
+  const monthlyRule = "月摊相加；买断与未填价不计"
+  const remainingRule = "按剩余天数折算；无到期日与买断不计"
+  const monthlyNote = `${monthlyRule}。${note}`
+  const remainingNote = `${remainingRule}。${note}`
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -324,11 +377,11 @@ export function SummaryCards({ nodes, group, finance = false, searching = false 
               两块都挂了浮层（detail，2026-10-12）：月度预算摊出「各节点月摊」、剩余价值摊出
               「各节点剩余价值」——各有可计的机器才挂（明细为空时保持原生的 title 提示那副面孔）。 */}
           <Pair>
-            <Block icon={Wallet} title="月度预算" hint={monthlyNote} detail={budget.monthlyItems.length > 0 ? <BudgetDetail head="各节点月摊" items={budget.monthlyItems} note={monthlyNote} /> : undefined}>
+            <Block icon={Wallet} title="月度预算" hint={monthlyNote} detail={budget.monthlyItems.length > 0 ? <BudgetDetail head="各节点月摊" items={budget.monthlyItems} note={monthlyRule} rates={note} /> : undefined}>
               <Big>{budget.monthly === null ? "—" : `≈${cny(budget.monthly)}`}</Big>
               <Foot>{budget.monthlyCount ? `${budget.monthlyCount} 台计费` : "未记录价格"}</Foot>
             </Block>
-            <Block icon={PiggyBank} title="剩余价值" hint={remainingNote} detail={budget.remainingItems.length > 0 ? <BudgetDetail head="各节点剩余价值" items={budget.remainingItems} note={remainingNote} /> : undefined}>
+            <Block icon={PiggyBank} title="剩余价值" hint={remainingNote} detail={budget.remainingItems.length > 0 ? <BudgetDetail head="各节点剩余价值" items={budget.remainingItems} note={remainingRule} rates={note} /> : undefined}>
               <Big>{budget.remaining === null ? "—" : `≈${cny(budget.remaining)}`}</Big>
               <Foot>{budget.remainingCount ? `${budget.remainingCount} 台未到期` : "无预付到期"}</Foot>
             </Block>
@@ -353,7 +406,13 @@ export function SummaryCards({ nodes, group, finance = false, searching = false 
       )}
 
       <Tile>
-        <Block icon={ArrowDownUp} title="今日流量">
+        <Block
+          icon={ArrowDownUp}
+          title="今日流量"
+          wide
+          hint="今天各节点的下行 / 上行总量与采样峰值（点开或悬停看逐台明细）"
+          detail={<TrafficDetail nodes={nodes} />}
+        >
           <div className="mt-2 grid grid-cols-2 gap-x-3 text-base font-semibold">
             <Val icon={ArrowDown}>{bytes(fleet.dayRx)}</Val>
             <Val icon={ArrowUp}>{bytes(fleet.dayTx)}</Val>

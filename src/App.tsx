@@ -322,12 +322,9 @@ export default function App() {
   const [globeOn, toggleGlobe] = useGlobeVisible(config.globeOn)
   const [cardStyle, chooseStyle] = useCardStyle(config.cardStyle)
 
-  // ★2026-10-30 站长反馈「宽卡模式和其他模式格格不入」（这一档现已改名「总览」）：它原先把
-  // **整页容器**收到 1080（卡片 510，与母主题 jikasei 同尺寸）。代价是切到这一档时整页往里缩一圈——顶栏、
-  // 概览、分组标签、卡片全跟着挪，五种形态里只有它换了一条栅格线，翻形态时像是换了个站。
-  // 现在五档共用同一条列线（1280，与顶栏/页脚一致）：总览档的网格与经典档完全同款
-  // （sm 2 / lg 3 / xl 4），1440 上每张 299 —— 四格读数与上传下载两栏按这个宽度量过。
-  // （中间试过「两列各 610」，四格读数被抻得很空，站长否掉了。）
+  // ★2026-10-31 站长要求：把「总览」这一档改回**宽卡**，版式与母主题 jikasei 的宽卡同步。
+  //   六档共用同一条列线（1280，与顶栏/页脚一致），宽卡档是 sm 2 / lg 3 —— 1440 上每张约 403，
+  //   与 jikasei 同一尺寸；整页不再单独收窄（2026-10-30 那次「收到 1080」的教训见 git 历史）。
   // 只收列表那一块的老路子不行：顶栏与卡片会各站一条列线（实测错开 ~100px）。
   const shell = "max-w-[1280px]"
   // 收起搜索（Esc 在空框上按的那一下）。**不清词**：收起是「让出顶栏那点宽度」，不是「别筛了」
@@ -651,7 +648,7 @@ export default function App() {
           )
         ) : !nodes ? (
           // 还在等节点列表：骨架按当前形态画。紧凑形态是一行一台，用几根细条比三张大卡片更像它；
-          // 总览形态与经典档同网格，高度也照它来。
+          // 宽卡是三列（每张约 403×216），骨架照它来。
           cardStyle === "compact" ? (
             <div className="space-y-2">
               {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -659,11 +656,11 @@ export default function App() {
               ))}
             </div>
           ) : cardStyle === "wide" ? (
-            // ★2026-10-30 总览卡改成四列小卡（1440 上 299×248），骨架照它来：
-            //   高度与列数对不上，加载完那一下整页会跳（真卡实测 247.5，这里 248）。
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-[248px]" />
+            // ★2026-10-31 宽卡回到「一行三张」（版式与母主题 jikasei 同步，1440 上约 403×215），
+            //   骨架照它来：高度与列数对不上，加载完那一下整页会跳。
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-[215px]" />
               ))}
             </div>
           ) : (
@@ -854,7 +851,7 @@ function NodeList({ view, group, onGroup, onOpen, onWarm, latencyLines, cardStyl
       ) : cardStyle === "compact" ? (
         <CompactList nodes={list} onOpen={onOpen} onWarm={onWarm} historyDays={historyDays} remarkPlacement={remarkPlacement} terms={terms} cursorId={cursorId} />
       ) : cardStyle === "wide" ? (
-        <div data-card-style="wide" className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div data-card-style="wide" className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((n) => (
             <WideCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} remarkPlacement={remarkPlacement} terms={terms} selected={n.id === cursorId} />
           ))}

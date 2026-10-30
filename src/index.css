@@ -326,14 +326,13 @@
 .sk-lift:hover { transform: translate(-1px, -1px) rotate(-.6deg); border-color: var(--accent-2); }
 .sk-lift:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 
-/* 总览档的读数与速率：13px / 14px 加粗（读数比表名 11px 大一档，速率是那一块的重心）。
+/* 宽卡档的读数与速率：13px / 16px 加粗（读数比表名 12px 大一档，速率是那一块的重心）。
    ★这两条必须写在未分层里、且带上 [data-card-style]：窄卡那段容器查询（内容盒 ≤288px 时
    `.tnum { font-size: 11px }`）会把 4 列里的读数与速率一起压到 11px —— 那是给经典/延迟几档的
-   「防折行」降档，而 299 宽的卡内容盒只有 263px，一定命中。2026-10-30 实测：速率被压成 11px，
-   比读数还小（桌面上反而比手机小）。
-   ★外框没有第二套：总览卡与其余几档一样，只有 .sk-card 那层 2px 墨线 + --r-card 歪圆角。 */
+   「防折行」降档。2026-10-31 宽卡回到三列（每张约 403），速率与母主题 jikasei 同号（16px）。
+   ★外框没有第二套：宽卡与其余几档一样，只有 .sk-card 那层 2px 墨线 + --r-card 歪圆角。 */
 [data-card-style="wide"] .wc-value { font-size: 13px; }
-[data-card-style="wide"] .wc-rate { font-size: 14px; }
+[data-card-style="wide"] .wc-rate { font-size: 16px; }
 
 /* 单张整宽卡（详情页的「网络延迟」那张 + 它的骨架）：**固定用 --r-card，不跟奇偶翻面**。
    原因只有一个：它的 nth-child 落在会被条件渲染推动的容器上（这台机器有没有备注会插进前面的
@@ -815,25 +814,37 @@
    轨道全透（纸面直接露出来）、拇指是一小截淡墨的圆头、去掉箭头按钮；悬停加深一档。
    Firefox 走 `scrollbar-color`（与 Chrome 的视觉对齐），Chrome/Edge/Safari 走 ::-webkit-*。
    `scrollbar-gutter: stable` 让有/无滚动的两类浮层的右缘一样宽，金额列不跳。 */
-.budget-detail {
+/* ★2026-10-31 与母主题 jikasei 同步成三段式：外壳只管高度上限，表头与尾巴是固定项，
+   只有中间那节 `.detail-scroll` 滚动 —— 一百多台机器滚到底，仍知道自己在看哪张卡的多少台。 */
+.budget-detail,
+.traffic-detail {
   max-height: min(24rem, 60vh);
+}
+.detail-scroll {
+  min-height: 0;                    /* flex 子项的默认 min-height:auto 会撑破父级上限 */
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--stroke) 40%, transparent) transparent;
   scrollbar-gutter: stable;
 }
-.budget-detail::-webkit-scrollbar { width: 10px; }
-.budget-detail::-webkit-scrollbar-track { background: transparent; }
-.budget-detail::-webkit-scrollbar-button { display: none; }
-.budget-detail::-webkit-scrollbar-thumb {
+.detail-scroll::-webkit-scrollbar { width: 10px; }
+.detail-scroll::-webkit-scrollbar-track { background: transparent; }
+.detail-scroll::-webkit-scrollbar-button { display: none; }
+.detail-scroll::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--stroke) 35%, transparent);
   border: 3px solid transparent;
   border-radius: 8px;
   background-clip: padding-box;
 }
-.budget-detail::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--stroke) 55%, transparent); }
-.budget-detail::-webkit-scrollbar-corner { background: transparent; }
+.detail-scroll::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--stroke) 55%, transparent); }
+.detail-scroll::-webkit-scrollbar-corner { background: transparent; }
+/* 「下面还有」的提示（见 components/DetailScroll.tsx）：滚动视口下沿一道渐隐遮罩 ——
+   露在边上的那一行淡出去，滚到底（data-detail-more 撤掉）就恢复干净。
+   别换成 sticky 渐变条：它会压住最后一行，短名单「刚好装下」时还多出一条灰影。 */
+.detail-scroll[data-detail-more] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
 
 /* 触屏命中区：**外观一点不动，只把可点范围往外撑**。
    手指比鼠标粗 —— Apple 的通行线是 44×44，WCAG 2.2 的硬线（2.5.8）是 24×24。
