@@ -45,18 +45,18 @@ const loadDetail = () => import("@/components/NodeDetail").then((m) => ({ defaul
 const NodeDetail = lazy(loadDetail)
 
 /**
- * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 五张图），
+ * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 六张图），
  * 不是一枚 `h-96`。它露面的场景只有一个 —— 点开时图表 chunk 还没到（见下面 warmDetail），
  * 所以它的高度必须跟加载完的内容一样，否则那一下会「先塌再撑」。
  *
  * 尺寸不另立一套，全跟着详情页自己那几块的类走：`dt` text-xs(16) + `dd` text-sm(20)、
- * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、五张图之间 space-y-5、
+ * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、六张图两列（gap-5）、
  * 规格格那层用同一套 grid 断点。于是手机上（一列）与桌面上（三列）都自动对上。
  *
  * ★三处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
  *   ① **备注块**（22px）—— 真实页里那台机器有备注才占位，所以这里得按 `hasRemarks` 判一次，
  *      不能无条件画（没备注的机器会反过来高出 38px）；（2026-10-06 修）
- *   ② **五张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
+ *   ② **六张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
  *      整页少 8px。①+② = 22+16+8 = 46px，正是那 46px 的差额；（2026-10-06 修）
  *   ③ **TCP / UDP 连接那一格**（2026-10-17 与 jikasei 1.33.0 同步合成**一格**）—— 详情页
  *      2026-10-14 应站长要求加了连接数、站长随后在 kanso 定了「合成一格」的口径（写法照
@@ -70,7 +70,7 @@ const NodeDetail = lazy(loadDetail)
  */
 function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling = false }: { hasRemarks?: boolean; hasConnections?: boolean; hasBilling?: boolean }) {
   // ★地址里带 `?tab=latency` 这条路真实存在（卡片的延迟读数 → openNode(id,'latency')），而下面的
-  //   骨架恒画五张资源卡：加载完会从五张塌成一张（实测 1280×900 塌 691px，卡片化之后每张
+  //   骨架恒画六张资源卡：加载完会从六张塌成一张（实测 1280×900 塌 691px，卡片化之后每张
   //   多 36px，比之前还多塌 180px）。这里认一下地址，按页签画一张按视口撑开的卡 ——
   //   chartTop 会随「这台有没有备注」变，所以只能近似（±40px），但不再有五次塌陷。
   const latencyTab =
@@ -116,7 +116,7 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling
           <Skeleton className="h-6 w-16" />
         </div>
       </div>
-      {/* 五张资源图：整页详情的默认页签就是它，所以骨架照它的高度来
+      {/* 六张资源图（2026-10-30 起加「进程」）：整页详情的默认页签就是它，所以骨架照它的高度来
           （2026-10-17 与 jikasei 1.33.0 同步：网络速率 / TCP·UDP 连接 / CPU / 内存 / 硬盘）。
           ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。
           ★2026-10-30 起每张图外面多了一层 `sk-card`（站长要的卡片），骨架必须一起换成卡形：
@@ -124,8 +124,8 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false, hasBilling
           ★它只覆盖资源页签，`?tab=latency` 那条路由上面那段的近似卡兜底）。
           旧骨架是「Skeleton 自己的虚线描边」冒充纸边；现在直接复用 `sk-card` + 同样的内边距 ——
           落位前就有纸边，落位后只是把灰条换成墨线与曲线，视觉上不跳。 */}
-      <div className="space-y-5">
-        {[0, 1, 2, 3, 4].map((i) => (
+      <div className="grid gap-5 lg:grid-cols-2">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="sk-card p-4">
             <Skeleton className="mb-2 h-4 w-16" />
             <Skeleton className="h-40 w-full" />

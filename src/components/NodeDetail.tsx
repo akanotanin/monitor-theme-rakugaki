@@ -32,6 +32,8 @@ type Point = {
   /** 连接条数（hub 的历史桶里带着 `tcp / udp`；老 hub 的桶可能没有这个键——图会自行留白）。 */
   tcp?: number | null
   udp?: number | null
+  /** 进程总数（同一个历史桶的 `procs`；老 hub 的桶同样可能没有这个键）。 */
+  procs?: number | null
 }
 // `latency` is the bucket's median round trip, null when every probe in it timed
 // out. `band` is the range its answers spanned, absent when they spanned nothing.
@@ -78,10 +80,10 @@ const TABS = [
 /**
  * 一张资源图 = 一张卡片（`sk-card`：2px 墨线 + 歪圆角 + 硬偏移影子，与列表里那些卡同一副纸感）。
  *
- * ★2026-10-30 站长反馈「给详情页的曲线图也加上卡片」：此前这五张图是**裸图**——标题一行、
+ * ★2026-10-30 站长反馈「给详情页的曲线图也加上卡片」：此前这几张图是**裸图**——标题一行、
  * 图直接画在点阵纸面上，全靠留白分块。同一页里上面的规格区是散的、下面的图表也是散的，
  * 整页只有列表页有卡，看起来像「图表还没排完版」。包进卡片后每张图自带一个落点，
- * 五张卡与列表页的卡片是同一套笔触，连 `--r-card` / `--r-card-alt` 的奇偶交错都沿用
+ * 六张卡与列表页的卡片是同一套笔触，连 `--r-card` / `--r-card-alt` 的奇偶交错都沿用
  * （`.sk-card:nth-child(2n)`）—— 那就是这个皮肤「手画纸边」的味道。2026-10-30 试过把它们
  * 收敛成一组温和的固定圆角，站长看过说「为什么详情页的卡片变成圆角了呢，原本的卡片样子更好」，
  * 已改回；只有单张的延迟卡为了不吃 nth-child 的翻面才固定成 `--r-card`（见 index.css）。
@@ -298,6 +300,8 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
     const max = (pick: (m: Point) => number) =>
       metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
     const connTop = axisTop(max((m) => Math.max(m.tcp ?? 0, m.udp ?? 0)), 4, 10)
+    // 进程数也是计数：与连接数同一条口径（下限 4、补到 4 的倍数，四分刻度不出 x.5）。
+    const procTop = axisTop(max((m) => m.procs ?? 0), 4, 10)
     return {
       // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
       // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
@@ -311,6 +315,7 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
       //   (4,6] / (8,10] / (20,30] 时轴顶会是 6 / 10 / 30。把轴顶补到 4 的倍数
       //   （6→8、10→12、30→32），任何峰值下四分刻度都是整数。
       conn: connTop + ((4 - (connTop % 4)) % 4),
+      procs: procTop + ((4 - (procTop % 4)) % 4),
     }
   }, [metricRows])
 
@@ -660,9 +665,11 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
       ) : metricRows.length === 0 ? (
         <p className="sk-hand py-8 text-center text-base">这段时间没有历史数据</p>
       ) : (
-        <div className="space-y-5">
+        // ★2026-10-30 站长要求：资源这一栏六张卡**每排两张、一共三排**（lg 起两列；
+        //   窄屏仍是一列 —— 半屏宽的图在手机上没有可读性）。
+        <div className="grid gap-5 lg:grid-cols-2">
           {/* ★2026-10-17 与 jikasei 1.33.0 同步的次序：网络速率与 TCP / UDP 连接打头
-              （在 CPU 之前），其后 CPU / 内存 / 硬盘。 */}
+              （在 CPU 之前），其后 进程 / CPU / 内存 / 硬盘（进程卡 2026-10-30 加、当天挪到 CPU 之前）。 */}
           {/* A rate has no total to be a fraction of, so this one climbs the
               ladder like CPU rather than pinning to a capacity. */}
           <Panel title="网络速率">
@@ -695,6 +702,20 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
               hours={hours}
               top={tops.conn}
               label="TCP / UDP 连接数走势"
+            />
+          </Panel>
+
+          {/* ★2026-10-30 站长要求加「进程」这张卡。数据只有**进程数**（hub 的实时汇报与历史桶
+              里都只有 `procs` 一个数，没有逐进程的列表/接口 —— 详见交付说明），所以这里画的是
+              进程总数的走势，口径与「TCP / UDP 连接」同款：计数不填面积、轴顶取窗口峰值。
+              标题右端那个数是当前值（与信息格里「N 进程」同源），方便一眼对照曲线末端。 */}
+          <Panel title={`进程 · ${m ? m.procs : "—"}`}>
+            <TimeChart
+              rows={metricRows}
+              series={[{ key: "procs", name: "进程", color: "var(--chart-8)" }]}
+              hours={hours}
+              top={tops.procs}
+              label="进程数走势"
             />
           </Panel>
 
@@ -741,6 +762,7 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
               label="硬盘使用量走势"
             />
           </Panel>
+
         </div>
       )}
     </div>

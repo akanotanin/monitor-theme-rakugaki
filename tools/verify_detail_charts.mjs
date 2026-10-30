@@ -1,6 +1,6 @@
-// 详情页那五张资源图（网络速率 / TCP·UDP 连接 / CPU / 内存 / 硬盘）的护栏 —— 它们从 recharts
+// 详情页那六张资源图（网络速率 / TCP·UDP 连接 / CPU / 内存 / 硬盘 / 进程）的护栏 —— 它们从 recharts
 // 换成了自绘 `TimeChart`（src/components/Chart.tsx），所以判据得落在「画出来的东西」上：
-//   ① 五块面板各有一张 svg，且撑满面板高度；② Y 轴刻度就是 quarters(top)（不是 recharts 挑的"整"数）；
+//   ① 六块面板各有一张 svg，且撑满面板高度；② Y 轴刻度就是 quarters(top)（不是 recharts 挑的"整"数）；
 //   ③ X 轴是真时间轴（标签是时刻，不是序号）；④ 断点照断：数据中间空一段，路径要断成两笔（不连桥）；
 //   ⑤ 悬停出 tooltip（那枚自绘的，值带单位）。
 //
@@ -63,6 +63,7 @@ const METRICS = {
       net_tx: gap ? null : 200 + i * 8,
       tcp: gap ? null : 8 + (i % 2),          // 8~9 → axisTop(9,4,10) = 10、补到 4 的倍数 = 12（刻度 0/3/6/9/12）
       udp: gap ? null : 2 + (i % 3),          // 2~4（与 tcp 同轴，两条线各自画得出来）
+      procs: gap ? null : 60 + (i % 5),       // 60~64 → axisTop(64,4,10) = 70、补到 4 的倍数 = 72
     }
   }),
 }
@@ -146,7 +147,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1200, de
 
 // 每一块面板量：标题、svg 尺寸、Y 轴刻度文字、X 轴刻度文字、面积/折线路径、路径里的断笔数
 const PROBE = `(() => {
-  const panels = [...document.querySelectorAll('h4')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP)/.test(h.textContent || ''))
+  const panels = [...document.querySelectorAll('h4')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP|进程)/.test(h.textContent || ''))
   return JSON.stringify(panels.map((h) => {
     const box = h.parentElement
     const svg = box.querySelector('svg')
@@ -176,7 +177,7 @@ async function open(url) {
   await send('Page.navigate', { url })
   await sleep(1500)
   await send('Page.navigate', { url })
-  // 轮询到五块面板真的画出来为止：经隧道取真 hub 的历史指标要两三秒，写死等待会偶发量到空页
+  // 轮询到六块面板真的画出来为止：经隧道取真 hub 的历史指标要两三秒，写死等待会偶发量到空页
   // （第一版就因为这个假 FAIL 过一次）。
   // ★（2026-10-16）上游模式实测会偶发超过 16 秒（隧道拥塞时单请求就有 ~2 秒，页面要连发好几个）——
   //   窗口放宽到 30 秒；超时仍空时打一行页面文字摘要，一眼知道是「慢」还是「页面进了错误态」。
@@ -185,16 +186,16 @@ async function open(url) {
     await sleep(400)
     charts = JSON.parse(await js(PROBE))
     // 等曲线真的画出来（只有坐标轴、还没有数据时截图会拍到一片空白 —— 第一版就拍到过）。
-    if (charts.length === 5 && charts.every((c) => c.svg && (c.area > 0 || c.line > 0))) break
+    if (charts.length === 6 && charts.every((c) => c.svg && (c.area > 0 || c.line > 0))) break
   }
-  if (charts.length < 5) {
+  if (charts.length < 6) {
     const hint = await js(`(() => { const el = document.querySelector('main'); return el ? el.innerText.slice(0, 120).replace(/\\s+/g, ' ') : '(没有 main)' })()`)
     console.log(`   ⚠ 只读到 ${charts.length} 块图；页面文字开头：${JSON.stringify(String(hint))}`)
   }
   return charts
 }
 async function shot(name, selector) {
-  // 拍一块区域：给了 selector 就拍它，没给就拍「五张资源图那一块」。
+  // 拍一块区域：给了 selector 就拍它，没给就拍「六张资源图那一块」。
   // ★captureBeyondViewport 在无头 + --disable-gpu 下不可靠：超出视口的部分会拍到空白，
   //   看着像「图表根本没渲染」（第一版两张对比图就是这么废掉的）。所以得**先把要拍的这块
   //   整体滚进视口**再拍。
@@ -209,8 +210,8 @@ async function shot(name, selector) {
       const r = el.getBoundingClientRect()
       return { x: Math.max(0, Math.round(r.x - 6)), y: Math.round(r.y + scrollY - 6), width: Math.round(r.width + 12), height: Math.round(r.height + 12), scale: 2 }
     }
-    const els = [...document.querySelectorAll('h4')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP)/.test(h.textContent || ''))
-    if (els.length < 5) return null
+    const els = [...document.querySelectorAll('h4')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP|进程)/.test(h.textContent || ''))
+    if (els.length < 6) return null
     const first = els[0].getBoundingClientRect()
     const last = els[els.length - 1].parentElement.getBoundingClientRect()
     return { x: Math.max(0, Math.round(first.x - 6)), y: Math.round(first.y + scrollY - 6), width: Math.round(first.width + 12), height: Math.round(last.bottom - first.top + 12), scale: 2 }
@@ -226,29 +227,36 @@ async function shot(name, selector) {
   console.log(`   已拍 ${SHOTS}/${name}.png（${clip.width}×${clip.height}）`)
 }
 
-console.log(`\n详情页五张资源图（${REAL ? '真站' : UPSTREAM ? `本机 dist + 上游 ${UPSTREAM}` : '本机夹具'}）:`)
+console.log(`\n详情页六张资源图（${REAL ? '真站' : UPSTREAM ? `本机 dist + 上游 ${UPSTREAM}` : '本机夹具'}）:`)
 const charts = await open(`${BASE}/node/1`)
 // ★2026-10-17 与 jikasei 1.33.0 同步的次序：网络速率与 TCP / UDP 连接打头（在 CPU 之前）。
-const PANELS = ['网络速率', 'TCP / UDP', 'CPU', '内存', '硬盘']
-check('五块面板都在、且次序＝网络速率 / TCP / UDP 连接 / CPU / 内存 / 硬盘',
-  charts.length === 5 && PANELS.every((t, i) => (charts[i]?.title || '').startsWith(t)),
+const PANELS = ['网络速率', 'TCP / UDP', '进程', 'CPU', '内存', '硬盘']
+// ★面板按**名字**取，别按下标：2026-10-30 加「进程」并把它挪到 CPU 之前，一改次序下标全错位
+//   （当时红了三条：面积图、CPU 刻度、内存/硬盘字节轴）。
+const pick = (prefix) => charts.find((c) => (c.title || '').startsWith(prefix))
+const pNet = pick('网络速率'), pConn = pick('TCP / UDP'), pCpu = pick('CPU'), pMem = pick('内存'), pDisk = pick('硬盘')
+check('六块面板都在、且次序＝网络速率 / TCP / UDP 连接 / 进程 / CPU / 内存 / 硬盘',
+  charts.length === 6 && PANELS.every((t, i) => (charts[i]?.title || '').startsWith(t)),
   JSON.stringify(charts.map((c) => c.title)))
 check('每块都有一张 svg，且撑满图表容器（h-40 = 160）',
-  charts.length === 5 && charts.every((c) => c.svg && Math.abs(c.svg.h - c.chartH) <= 2 && c.chartH === 160),
+  charts.length === 6 && charts.every((c) => c.svg && Math.abs(c.svg.h - c.chartH) <= 2 && c.chartH === 160),
   JSON.stringify(charts.map((c) => `${c.title} svg ${c.svg?.w}×${c.svg?.h} / 容器 ${c.chartH}`)))
 check('每张 svg 都带 aria-label（读屏知道画的是什么）', charts.every((c) => !!c.ariaLabel), JSON.stringify(charts.map((c) => c.ariaLabel)))
 check('Y 轴 5 条刻度、X 轴有时刻标签',
   charts.every((c) => c.ys.length === 5 && c.xs.length >= 3),
   JSON.stringify(charts.map((c) => `${c.title} y=${c.ys.length} x=${c.xs.length}`)))
 check('X 轴标签是时刻（HH:MM），不是序号', charts.every((c) => c.xs.every((s) => /^\d{2}:\d{2}$/.test(s))), JSON.stringify(charts[0]?.xs))
-check('面积图有线下面的填充（CPU / 内存 / 硬盘；断点会把它切成两块），折线图没有（网络速率 / TCP / UDP）',
-  charts[2]?.area >= 1 && charts[3]?.area >= 1 && charts[4]?.area >= 1 && charts[0]?.area === 0 && charts[1]?.area === 0,
+check('面积图有线下面的填充（CPU / 内存 / 硬盘；断点会把它切成两块），折线图没有（网络速率 / TCP / UDP / 进程）',
+  pCpu?.area >= 1 && pMem?.area >= 1 && pDisk?.area >= 1 && pNet?.area === 0 && pConn?.area === 0,
   JSON.stringify(charts.map((c) => `${c.title} 面积 ${c.area}`)))
-check('网络速率是两条折线（下行 / 上行）', charts[0]?.line === 2, `line=${charts[0]?.line}`)
+check('网络速率是两条折线（下行 / 上行）', pNet?.line === 2, `line=${pNet?.line}`)
 // ★2026-10-17 与 jikasei 1.33.0 同步：TCP / UDP 两条折线，且是两种不同颜色。
 check('★ TCP / UDP 连接面板：两条折线、两种不同颜色',
-  charts[1]?.line === 2 && new Set(charts[1]?.colors ?? []).size === 2,
-  JSON.stringify({ 线数: charts[1]?.line, 颜色: charts[1]?.colors }))
+  pConn?.line === 2 && new Set(pConn?.colors ?? []).size === 2,
+  JSON.stringify({ 线数: pConn?.line, 颜色: pConn?.colors }))
+// ★进程卡与连接数同款：单条折线、不填面积（计数不是容量）
+check('★ 进程面板：一条折线、不填面积', pConn !== undefined && (pick('进程')?.line ?? 0) >= 1 && (pick('进程')?.area ?? 0) === 0,
+  JSON.stringify({ 线数: pick('进程')?.line, 面积: pick('进程')?.area }))
 // 断笔数要按**数据里到底有没有空档**来判：夹具中间挖了一段（第 12~15 点），
 // 真 hub 的历史是连续的 —— 拿「必须 ≥2 笔」去卡真数据，是我判据写错了（第一版就错在这里）。
 const gaps = METRICS.metrics.filter((m) => m.cpu === null).length
@@ -261,7 +269,7 @@ if (!REAL && !UPSTREAM) {
   //   又会把老 hub（历史桶没有 tcp/udp 两列）下连接数面板的**留白**当假红。
   //   改为：必有数据的四块都画出了线；连接数面板缺列时允许留白。
   check('真数据：该有数据的面板都画出了线（连接数面板缺列时留白，不算断）',
-    [0, 2, 3, 4].every((i) => (charts[i]?.breaks ?? []).some((n) => n >= 1)),
+    [pNet, pCpu, pMem, pDisk].every((c) => (c?.breaks ?? []).some((n) => n >= 1)),
     JSON.stringify(charts.map((c) => `${c.title} 断笔 ${c.breaks.join(',')}`)))
 }
 
@@ -269,19 +277,19 @@ if (!REAL && !UPSTREAM) {
   const maxCpu = Math.max(...METRICS.metrics.map((m) => m.cpu ?? 0))
   const cpuTicks = quarters(axisTop(maxCpu, 4, 10, 100)).map((v) => `${v}%`)
   check(`CPU 的 Y 轴刻度就是 quarters(axisTop(max))（${cpuTicks.join(' / ')}）`,
-    JSON.stringify(charts[2]?.ys) === JSON.stringify(cpuTicks), JSON.stringify(charts[2]?.ys))
-  check('网络速率的 Y 轴带 /s 单位', (charts[0]?.ys ?? []).every((s) => s.endsWith('/s')), JSON.stringify(charts[0]?.ys))
+    JSON.stringify(pCpu?.ys) === JSON.stringify(cpuTicks), JSON.stringify(pCpu?.ys))
+  check('网络速率的 Y 轴带 /s 单位', (pNet?.ys ?? []).every((s) => s.endsWith('/s')), JSON.stringify(pNet?.ys))
   check('内存 / 硬盘的 Y 轴按字节印',
-    (charts[3]?.ys ?? []).every((s) => /B$/.test(s)) && (charts[4]?.ys ?? []).every((s) => /B$/.test(s)),
-    JSON.stringify({ 内存: charts[3]?.ys, 硬盘: charts[4]?.ys }))
+    (pMem?.ys ?? []).every((s) => /B$/.test(s)) && (pDisk?.ys ?? []).every((s) => /B$/.test(s)),
+    JSON.stringify({ 内存: pMem?.ys, 硬盘: pDisk?.ys }))
   const maxConn = Math.max(...METRICS.metrics.map((m) => Math.max(m.tcp ?? 0, m.udp ?? 0)))
   // ★与页面同式（2026-10-16）：轴顶补到 4 的倍数 —— axisTop 会给 6 / 10 / 30 这类，
   //   quarters 就带 x.5；夹具峰值 9 正是那个坑（axisTop = 10 → 补到 12）。页面若漏补，这里必红。
   const connTop = axisTop(maxConn, 4, 10)
   const connTicks = quarters(connTop + ((4 - (connTop % 4)) % 4)).map(String)
   check(`TCP / UDP 的 Y 轴刻度就是 quarters(轴顶补整)（${connTicks.join(' / ')}）、纯整数无单位`,
-    JSON.stringify(charts[1]?.ys) === JSON.stringify(connTicks) && connTicks.every((s) => /^\d+$/.test(s)),
-    JSON.stringify(charts[1]?.ys))
+    JSON.stringify(pConn?.ys) === JSON.stringify(connTicks) && connTicks.every((s) => /^\d+$/.test(s)),
+    JSON.stringify(pConn?.ys))
 }
 
 // 悬停：鼠标落到 CPU 那块绘图区中间，应该出一枚 tooltip（时间戳 + CPU + 带 % 的值）
@@ -297,7 +305,7 @@ await js(`(() => {
 await sleep(250)
 // ★锚点找：`[data-tooltip]` 是主题自己挂在自绘 tooltip 上的，别绑 Tailwind 类名
 //   （派生皮肤的圆角类是 sk-chip，写死 rounded-lg 会在这边假红）。
-// ★（2026-10-17 加第五张图时踩到）同页多图、各图悬停状态互不清除 —— 旧的 tooltip 会留在
+// ★（2026-10-17 加连接数那张图时踩到）同页多图、各图悬停状态互不清除 —— 旧的 tooltip 会留在
 //   DOM 里：凡在「已经悬停过别的图」之后读的那几处（tipConn / hoverAt 的 card），都按内容
 //   取对应的那一枚（/TCP/、/CPU/），别拿 `querySelector` 的第一枚（卡片跟随那两条用例
 //   曾读到上方 TCP 图的旧卡片，量出 top=-169 的假 FAIL）。
@@ -691,13 +699,13 @@ if (!REAL && !UPSTREAM) {
   console.log('\n三、页签往返（网络延迟 → 资源）:')
   const clickTab = (label) => js(`(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === ${JSON.stringify(label)}); b && b.click(); return !!b })()`)
   const waitLatency = async () => { for (let i = 0; i < 40; i++) { await sleep(300); if (await js(`document.querySelector('svg[aria-label="节点延迟走势"]') !== null`)) return true } return false }
-  // a) 正常形状（五个键都带齐）：切过去再切回来，五张图必须回来
+  // a) 正常形状（五个键都带齐）：切过去再切回来，六张图必须回来
   await clickTab('网络延迟')
   check('切到延迟页签（图出来）', await waitLatency(), '')
   await clickTab('资源')
   let backN = 0
   for (let i = 0; i < 50; i++) { await sleep(300); backN = await js(`document.querySelectorAll('[data-chart] svg').length`); if (backN >= 5) break }
-  check('★ 切回资源：五张图回来（不停在空提示/空白）', backN >= 5, `现在 ${backN} 张`)
+  check('★ 切回资源：六张图回来（不停在空提示/空白）', backN >= 6, `现在 ${backN} 张`)
   // b) 缺键形状（形状漂移的哨兵）：响应里没有 metrics 键，整页也不许炸
   errors.length = 0
   partialShape = true
@@ -713,7 +721,7 @@ if (!REAL && !UPSTREAM) {
     if (st.charts >= 5) break
   }
   check('★ 缺 metrics 键：整页不炸（header 还在、没卸载整棵树）', st.alive === true, JSON.stringify(st))
-  check('★ 缺 metrics 键：随后五张图照样画出来', st.charts >= 5, JSON.stringify(st))
+  check('★ 缺 metrics 键：随后六张图照样画出来', st.charts >= 5, JSON.stringify(st))
   check('缺键切换期间没有未捕获异常', errors.length === 0, errors.slice(0, 2).join(' | '))
   partialShape = false
 }
