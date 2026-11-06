@@ -46,7 +46,13 @@ const CACHES = [
   { what: '站名', key: 'rakugaki:site_name', places: [
     ['src/App.tsx', /TITLE_CACHE_KEY\s*=\s*"([^"]+)"/g],
     ['public/title-probe.js', /var KEY\s*=\s*"([^"]+)"/g],
-    ['index.html', /localStorage\.getItem\("([^"]+)"\)/g],
+    // 只认 `rakugaki:` 前缀那一条：index.html 里还有首帧明暗那段读的 `theme`（见下一条）。
+    ['index.html', /localStorage\.getItem\("(rakugaki:[^"]+)"\)/g],
+  ] },
+  // 明暗这一档同源两处：App 的 useTheme 读 / 写 / 删，index.html 的首帧脚本事先读一次。
+  { what: '明暗', key: 'theme', places: [
+    ['src/App.tsx', /localStorage\.getItem\("(theme)"\)/g],
+    ['index.html', /localStorage\.getItem\("(theme)"\)/g],
   ] },
 ]
 const bad = []
@@ -65,6 +71,20 @@ const html = readFileSync('index.html', 'utf8')
   const probeTag = html.match(/<script src="\/title-probe\.js"[^>]*>/)
   if (!probeTag) bad.push(`index.html 里没有引入 /title-probe.js（标签页的占位值就没法早点换掉）`)
   else if (!/\basync\b/.test(probeTag[0])) bad.push(`/title-probe.js 的引入没有 async：普通脚本/defer 会拖住入口与首绘（见 index.html 注释里的实测数）`)
+}
+// ★ 首帧明暗（2026-11-06）：暗色访客在入口包执行之前只有 CSS 默认亮色底 —— 先闪一屏亮色。
+//   那一段必须内联在 <head>、赶在入口模块之前，并且要把 colorScheme 说清楚。
+{
+  const toggleAt = html.indexOf('document.documentElement.classList.toggle("dark"')
+  const moduleAt = html.indexOf('<script type="module"')
+  if (toggleAt < 0) bad.push('index.html 里没有首帧明暗的内联脚本（暗色访客会先闪一屏亮色）')
+  else {
+    if (moduleAt >= 0 && toggleAt > moduleAt) bad.push('首帧明暗那段在入口模块之后：必须赶在首帧之前（挪回 <head>）')
+    if (!html.includes('document.documentElement.style.colorScheme')) bad.push('首帧明暗那段没有设 colorScheme（暗色下原生滚动条与表单控件仍是亮色）')
+  }
+  const css = readFileSync('src/index.css', 'utf8')
+  if (!css.includes('color-scheme: dark')) bad.push('src/index.css 的 .dark 没有 color-scheme: dark')
+  if (!css.includes('color-scheme: light')) bad.push('src/index.css 的 :root 没有 color-scheme: light')
 }
 // 站点图标的两条静态引用：hub 1.4.0 认的就是这两个路径，写成别的名字等于把兜底丢了。
 for (const icon of ['/favicon.svg', '/apple-touch-icon.png']) {

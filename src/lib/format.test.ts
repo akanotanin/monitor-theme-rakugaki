@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, cpuName, daysUntil, despike, innerTicks, osName, pair, quarters, rate, timeTicks, uptime, zoomSpan,
+  axisBytes, axisTop, bytes, cycleName, cpuName, CYCLES, daysUntil, despike, innerTicks, osName, pair, quarters, rate, timeTicks, uptime, zoomSpan,
 } from "./format.ts"
 
 let failed = 0
@@ -26,6 +26,14 @@ eq(bytes(1024), "1.00 KB", "bytes(1 KiB)")
 eq(bytes(10 * 1024), "10.0 KB", "两位数留一位小数")
 eq(bytes(100 * 1024), "100 KB", "三位数不留小数")
 eq(bytes(1024, 1), "1.0 KB", "digits 覆盖默认档位")
+// ★2026-11-06：四舍五入顶到 1024 时必须进位（原先印「1024 B」「1024 KB」）。
+eq(bytes(1023.6), "1.00 KB", "1023.6 B 进位")
+eq(bytes(1048575), "1.00 MB", "1048575 B 进位")
+eq(axisBytes(1048575), "1 MB", "axisBytes 同样进位")
+// 周期写法：hub 把非具名整月数存成 `<n>m`。
+eq(cycleName("5m"), "5 个月", "5m 写成 5 个月")
+eq(cycleName("yearly"), "年付", "具名周期照旧")
+eq(CYCLES.monthly, "月付", "CYCLES 未动")
 
 // pair: one unit when both sides share it, two when they do not.
 eq(pair(300 * 1024 ** 2, 900 * 1024 ** 2), "300.00 / 900.00 MB", "同单位只写一次")

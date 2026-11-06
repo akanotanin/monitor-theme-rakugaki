@@ -16,9 +16,10 @@ export type Metrics = {
   total_tx: number
   month_rx: number
   month_tx: number
-  tcp: number
-  udp: number
-  procs: number
+  /** 连接数 / 进程数：老 agent 可能整列不报。缺了不该把整块实时数据作废（见 safeNodes）。 */
+  tcp?: number | null
+  udp?: number | null
+  procs?: number | null
 }
 
 export type Node = {
@@ -167,12 +168,21 @@ export function sample(nodes: Node[]) {
 /** A malformed report must not remove every other node from the page. */
 export function safeNodes(nodes: Node[]): Node[] {
   const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0
-  const fields = ["uptime", "cpu", "mem_total", "mem_used", "swap_total", "swap_used", "disk_total", "disk_used",
-    "net_rx", "net_tx", "total_rx", "total_tx", "month_rx", "month_tx", "tcp", "udp", "procs"] as const
+  // 承重的那几列：坏一个就整块 metrics 作废（宁可不显示，也不显示一半的假读数）。
+  const required = ["uptime", "cpu", "mem_total", "mem_used", "swap_total", "swap_used", "disk_total", "disk_used",
+    "net_rx", "net_tx", "total_rx", "total_tx", "month_rx", "month_tx"] as const
+  // 可有可无：agent 与 hub 版本不同步时可能整列不报（hub 自己的 check_contract 也只 warn）。
+  // 缺了降级成 null —— 否则一台少报 procs 的机器连 CPU / 内存 / 网速一起消失（2026-11-06）。
+  const optional = ["tcp", "udp", "procs"] as const
   return nodes.map((node) => {
     const m = node.metrics
-    return !m || (fields.every((key) => number(m[key])) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(number))
-      ? node : { ...node, metrics: null }
+    if (!m) return node
+    const valid = required.every((key) => number(m[key])) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(number)
+    if (!valid) return { ...node, metrics: null }
+    if (optional.every((key) => typeof m[key] === "number")) return node
+    const metrics = { ...m }
+    for (const key of optional) metrics[key] = number(m[key]) ? (m[key] as number) : null
+    return { ...node, metrics }
   })
 }
 

@@ -35,6 +35,11 @@ eq([cycleDaysOf("monthly"), cycleDaysOf("quarterly"), cycleDaysOf("semiannual"),
   [30, 90, 180, 365, 730, 1095], "周期天数表")
 eq([cycleMonthsOf("once"), cycleMonthsOf(""), cycleMonthsOf("weird")], [0, 1, 1], "一次性 = 0；没写或不认识按月付")
 eq([cycleDaysOf("once"), cycleDaysOf(""), cycleDaysOf("weird")], [0, 30, 30], "同上（天数）")
+// ★2026-11-06：hub 对非具名整月数存成 `<n>m`；不认这一种，5m 会被当月付（月摊 5 倍）。
+eq([cycleMonthsOf("5m"), cycleMonthsOf("18m"), cycleMonthsOf("60m"), cycleMonthsOf("12m")], [5, 18, 60, 12], "Nm 周期按月数")
+eq([cycleDaysOf("5m"), cycleDaysOf("18m"), cycleDaysOf("60m"), cycleDaysOf("12m")], [150, 548, 1825, 365], "Nm 折天数")
+const custom = budgetOf([node({ price: 500, currency: "CNY", billing_cycle: "5m", expires_in: 120 })])
+eq([round(custom.monthly), round(custom.remaining)], [100, 400], "5m / ¥500 / 剩 120 天：月摊 100、剩余 400")
 
 /* 空列表：两个数都是 null（卡片显示「—」），不是 ¥0.00。 */
 eq(budgetOf([]), { monthly: null, remaining: null, monthlyCount: 0, remainingCount: 0, used: [], skipped: [], monthlyItems: [], remainingItems: [] }, "空列表")
@@ -149,6 +154,8 @@ eq(round(worth.remaining), round(100 + 15), "明细与合计同源：加起来�
 const liveSnap = { rates: { ...FX_CNY, USD: 7.1, EUR: 7.5 }, date: "2026-10-11", live: true }
 const live = budgetOf([node({ price: 12, currency: "USD", billing_cycle: "monthly", expires_in: 10 })], liveSnap)
 eq(round(live.monthly), round(12 * 7.1), "注入每日汇率：月摊按新值折算（不是内置表的数）")
+eq(fxNote(["USD", "TWD"], [], { ...liveSnap, builtin: ["TWD"] }),
+  `每日汇率：USD ¥7.1；固定汇率 2026-10-11：TWD ¥${FX_CNY.TWD}`, "上游缺的币种单独按固定汇率写")
 // 每日汇率的日期就是今天，不写在尾巴上（15rem 的浮层里那一行会因此多折一行）；
 // 内置表那次要留日期 —— 它是「这份表多久没换过」的信号。
 eq(fxNote(["USD"], [], liveSnap), "每日汇率：USD ¥7.1", "每日汇率只写来源（日期省略）")

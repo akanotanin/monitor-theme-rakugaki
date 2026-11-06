@@ -29,7 +29,10 @@ export function Meter({ label, pct, foot, empty = "—", icon: Icon, plain = fal
   // null means the metric has no ceiling to fill, so the bar stays empty rather
   // than reporting 0%. What replaces the percentage depends on the reason:
   // unknown for a node with no metrics, ∞ for a plan with no limit.
-  const filled = pct === null ? 0 : Math.min(100, Math.max(0, pct))
+  // `NaN` 也要挡：Math.min/Math.max 只夹越界、不夹非数 —— `width: "NaN%"` 是非法声明，
+  // 浏览器丢掉后块回到满宽（读不到的读数被画成 100%）。
+  const valid = typeof pct === "number" && Number.isFinite(pct)
+  const filled = valid ? Math.min(100, Math.max(0, pct)) : 0
   // 快满了就换成陶土橙：四种读数都是「越满越该看一眼」，纯墨色表达不了这一档。
   // 阈值 85% 是四条共用的——CPU 跑满和硬盘写满，对访客是同一句话「这台机器吃紧了」。
   const hot = pct !== null && filled >= 85
@@ -41,7 +44,7 @@ export function Meter({ label, pct, foot, empty = "—", icon: Icon, plain = fal
           <span className="truncate">{label}</span>
         </span>
         <span className="tnum text-xs font-medium">
-          {pct === null ? empty : `${filled < 10 ? filled.toFixed(1) : filled.toFixed(0)}%`}
+          {valid ? `${filled < 10 ? filled.toFixed(1) : filled.toFixed(0)}%` : empty}
         </span>
       </div>
       <div className={`sk-bar w-full${plain ? " my-1.5 h-1.5" : " mt-2 h-2.5"}${hot ? " sk-bar-hot" : ""}`}>

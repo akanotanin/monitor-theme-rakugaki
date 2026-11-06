@@ -77,7 +77,9 @@ function niceScale(lo: number, hi: number, count = 4): { lo: number; hi: number;
   const raw = (hi - lo) / count
   const mag = 10 ** Math.floor(Math.log10(Math.max(raw, Number.MIN_VALUE)))
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((n) => n >= raw) ?? raw
-  const low = Math.floor(lo / step) * step
+  // 数据本身非负（延迟 / 速率 / 百分比）时量程不许落到 0 以下：平直且 ≤1ms 的线路会被
+  // 上面的 pad 扩成 −1..1.5，刻度印出「−1ms」（2026-11-06）。
+  const low = lo >= 0 ? Math.max(0, Math.floor(lo / step) * step) : Math.floor(lo / step) * step
   const high = Math.ceil(hi / step) * step
   const ticks: number[] = []
   for (let v = low; v <= high + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6)
@@ -353,7 +355,16 @@ export function TimeChart({
   const indexAt = (clientX: number, el: Element) => {
     const rect = el.getBoundingClientRect()
     const ratio = (clientX - rect.left) / Math.max(1, rect.width)
-    return Math.min(view.length - 1, Math.max(0, Math.round(ratio * (view.length - 1))))
+    // ★按**时间**反查：时间轴上的空档（agent 掉线那几小时）被压成 0 宽，按「第几个点」取行
+    //   会让十字线落在离光标几百像素外、tooltip 报另一段时间（2026-11-06，与 jikasei 同轮）。
+    const target = t0 + Math.min(1, Math.max(0, ratio)) * span
+    let best = 0
+    let gap = Infinity
+    for (let i = 0; i < view.length; i++) {
+      const d = Math.abs(view[i].ts - target)
+      if (d < gap) { gap = d; best = i }
+    }
+    return best
   }
 
   const hovered = hover === null ? null : view[Math.min(Math.max(hover, 0), view.length - 1)]

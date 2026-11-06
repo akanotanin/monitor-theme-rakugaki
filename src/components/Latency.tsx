@@ -109,8 +109,11 @@ const WARN_MS = 200
 type Tone = "ok" | "warn" | "bad" | "none"
 
 function toneOf(ms: number | null, loss: number): Tone {
-  if (ms === null) return "none"
-  if (loss >= 5 || ms >= WARN_MS) return "bad"
+  // ★丢包先判（2026-11-06）：整窗全超时（ms 全 null、loss 100）原来落进「没有读数」那一档，
+  //   比 5% 丢包还浅 —— 彻底挂掉反而最不显眼。
+  if (loss >= 5) return "bad"
+  if (ms === null) return loss > 0 ? "warn" : "none"
+  if (ms >= WARN_MS) return "bad"
   if (loss > 0 || ms >= GOOD_MS) return "warn"
   return "ok"
 }

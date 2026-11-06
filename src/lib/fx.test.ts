@@ -54,6 +54,8 @@ const merged = await fetchRates(route({
   "open.er-api.com": { result: "success", time_last_update_utc: "Sun, 11 Oct 2026 00:02:32 +0000", rates: { USD: 0.14935, EUR: 0.13325 } },
 }))
 ok(!!merged && merged.rates.GBP === FX_BUILTIN.rates.GBP, "源没给的币种用内置值顶上（不让那台机器掉出合计）", JSON.stringify(merged?.rates))
+ok(!!merged && (merged.builtin ?? []).includes("GBP"), "内置兜底的那几种记进 builtin", JSON.stringify(merged?.builtin))
+ok(!!merged && !(merged.builtin ?? []).includes("USD"), "上游真给了的不进 builtin", JSON.stringify(merged?.builtin))
 ok((await fetchRates(async () => { throw new Error("offline") })) === null, "两个源都够不着 → null（页面继续用内置表）")
 
 /* 缓存：Node 没有 localStorage —— 两个函数都得是安全空操作。 */

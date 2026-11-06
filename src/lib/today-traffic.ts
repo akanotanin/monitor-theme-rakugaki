@@ -38,11 +38,19 @@ export type TrafficPeak = {
 
 export const NO_PEAK: TrafficPeak = { down: 0, downAt: null, up: 0, upAt: null }
 
-/** 本机时区的今天 00:00（毫秒）。 */
+const DAY_MS = 86_400_000
+/** 北京的固定偏移：中国不实行夏令时（与 site-settings 的 beijingHour 同一套）。 */
+const BEIJING_MS = 8 * 3_600_000
+
+/**
+ * 「今天」的 0 点（毫秒），按**北京时间**数，不按访客本机。
+ *
+ * 卡片面上的 `day_rx / day_tx` 是 hub 按它自己的日历累加的；峰值窗口若按访客本地日历裁，
+ * 同一个站的两个访客会看到两份不同的「今天」，跨时区的还会漏一段（甚至全空）。
+ * 站点本来就把「夜里」定在北京时间（themeMode 的 auto 档），这里沿用同一把尺子。
+ */
 export function dayStart(now = Date.now()): number {
-  const d = new Date(now)
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
+  return Math.floor((now + BEIJING_MS) / DAY_MS) * DAY_MS - BEIJING_MS
 }
 
 /**
@@ -88,7 +96,8 @@ export function peakToday(rows: TrafficRow[], now = Date.now()): TrafficPeak {
 
 /** 今天收发了多少（上行 + 下行），明细按它降序排。 */
 export function trafficTotal(node: Node): number {
-  return Math.max(0, node.day_rx) + Math.max(0, node.day_tx)
+  // `|| 0`：老 hub 没有 day_rx / day_tx，缺一个就把排序键算成 NaN。
+  return Math.max(0, node.day_rx || 0) + Math.max(0, node.day_tx || 0)
 }
 
 /** 浮层里最多给多少台取峰值：今天流量最大的那些，其余那几台只剩「今日流量」一栏。 */

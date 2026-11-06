@@ -719,7 +719,7 @@ let classicNet = null
     !!pop && pop.rows[2].includes('—') && pop.rows[3].includes('—') &&
     !pop.rows[2].includes('0 B/s'), JSON.stringify(pop?.rows.slice(2) ?? []))
   check('今日流量·浮层：尾巴写明口径（按今天 00:00 起的历史采样计算）',
-    !!pop && pop.text.includes('峰值按今天 00:00 起的历史采样计算'), pop?.text.slice(0, 80) ?? '')
+    !!pop && pop.text.includes('峰值按北京时间今天 00:00 起的历史采样计算'), pop?.text.slice(0, 80) ?? '')
   check('今日流量·浮层：比预算那两块宽（22rem 档），且不出视口右沿',
     !!pop && pop.w >= 300 && pop.right <= pop.viewport - 8, `宽 ${pop?.w} / 右沿 ${pop?.right} / 视口 ${pop?.viewport}`)
   check('今日流量·浮层：明细那节自己滚（表头/尾巴固定）',

@@ -460,7 +460,15 @@ console.log('\n── 延迟档：悬浮层同批退役（2026-10-14）；卡面
 
 /* ────────────────────────────── ⑤ 紧凑档 ────────────────────────────── */
 console.log('\n── 紧凑档：展开行量程栏右端并排（手机收成图标 + 浮层） ──')
-const expandFirstRow = () => evalJS(`(() => { const r = document.querySelector('tbody tr[role=button]'); if (!r) return false; r.click(); return true })()`)
+// 2026-11-06：紧凑行的可点语义搬进了名称列那枚真按钮（<tr> 不再冒充 button），
+// 按 data-node-card 找行、点它的名字按钮 —— 与访客真实的键盘路径同一条。
+const expandFirstRow = () => evalJS(`(() => {
+  const r = document.querySelector('tbody tr[data-node-card]')
+  const b = r && r.querySelector('button[aria-expanded]')
+  if (!b) return false
+  b.click()
+  return true
+})()`)
 {
   remark = ''
   await render({ cardStyle: 'compact' }, 'compact-base', { h: 1400 })

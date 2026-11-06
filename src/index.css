@@ -40,6 +40,9 @@
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
 
 :root {
+  /* 原生控件（滚动条、下拉、日期选择器）跟着这一档走：不声明就会一直是亮色的。
+     index.html 的首帧内联脚本也把同一档写进 documentElement.style.colorScheme。 */
+  color-scheme: light;
   /* ---- 纸与墨：整套配色的根。ccrouter.app 那一套手绘纸感——米白纸面、近黑墨线、
      陶土色点缀、硬偏移的影子（不是模糊阴影），边框用手写感的歪圆角而不是标准圆角。 */
   --paper: #faf9f5;
@@ -145,6 +148,8 @@
 }
 
 .dark {
+  /* 原生控件在暗色下也走暗的那一套（见 :root 里的同一行）。 */
+  color-scheme: dark;
   --paper: #1f1e1d;
   /* 抬升面（卡片与浮层）与暖面：2026-10-17 各抬一档 —— #262624 → **#2b2a28**、#2a2825 → **#2e2d2b**
      （「暗色下卡片与页面底区分不明显」的反馈）。卡/纸合成对比 1.10 → **1.16**（与另两套皮肤同档）；
@@ -629,7 +634,6 @@
   font-family: ui-monospace, SFMono-Regular, "IBM Plex Mono", "Rakugaki Kai", monospace;
   font-size: 8.8px;
   letter-spacing: 1.4px;
-  opacity: 0.55;
 }
 
 .globe-side {

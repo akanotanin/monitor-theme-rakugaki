@@ -242,6 +242,9 @@ function useTheme(siteMode: ThemeMode) {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
+    // 原生控件那一档（滚动条 / 下拉）：CSS 里 :root / .dark 各有一份，这里再写一次内联 ——
+    // index.html 的首帧脚本会先挂一次内联，内联比 CSS 规则权重大，不跟着改就会停在首帧猜的那档。
+    document.documentElement.style.colorScheme = dark ? "dark" : "light"
     /**
      * 手机浏览器那一圈（地址栏 / 状态栏）的配色（`theme-color`）跟着**页面实际用的**明暗走。
      *
@@ -465,7 +468,17 @@ export default function App() {
    */
   useEffect(() => {
     if (open !== null) return
-    history.replaceState({}, "", pageUrl(null, null, { group: groupNow, region: regionNow, q: query }))
+    const url = pageUrl(null, null, { group: groupNow, region: regionNow, q: query })
+    // ★2026-11-06：逐字写会撞 Safari 的 history 限流（100 次 / 30 秒，超了抛 SecurityError，
+    // 异常在 effect 里会把整棵树卸载 = 白屏）。改成 200ms 防抖，写不进也不算错。
+    const timer = window.setTimeout(() => {
+      try {
+        history.replaceState({}, "", url)
+      } catch {
+        // 隐私模式 / 限流：这次没写进去，下一次筛选变化再说。
+      }
+    }, 200)
+    return () => window.clearTimeout(timer)
   }, [open, groupNow, regionNow, query])
 
   /**
@@ -531,7 +544,9 @@ export default function App() {
     // 纵向排下来、页脚吊在最后（main 吃满剩余高度）：机器少、内容比一屏短时，
     // 署名也落在屏幕的最底下，而不是紧贴在列表底下浮在半空中。
     <div className="flex min-h-svh flex-col">
-      <header className="sk-nav sticky top-0 z-10 backdrop-blur">
+      {/* z-30：卡片与概览的浮层是 z-20 —— 顶栏停在 z-10 时，浮层往下滚会压在它身上、
+          把站名与搜索的点击一起吃掉（2026-11-06，与 jikasei 同轮）。 */}
+      <header className="sk-nav sticky top-0 z-30 backdrop-blur">
         {/* ★ 窄屏的横向余量很紧（390 宽上这一行原本要 407px，整页因此能横向拖动）。现在按
             「**站名优先展开、图标自己滑**」分：站名那格 max-w-[55%]（正常名字完整显示，
             只有长到离谱才轮到 truncate），搜索钉在它右边，剩下几枚图标装进一条能横向滑动的

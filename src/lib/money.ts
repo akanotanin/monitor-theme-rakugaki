@@ -34,13 +34,29 @@ const CYCLE: Record<string, { months: number; days: number }> = {
 
 /** 实际周期是几「月份」。没写周期（老数据 / 手填）按月付——最常见的记法。 */
 export function cycleMonthsOf(cycle: string): number {
-  return CYCLE[cycle]?.months ?? 1
+  const named = CYCLE[cycle]
+  if (named) return named.months
+  // hub 只把「具名的六个」写成名字，其余整月数一律存成 `<n>m`（monitor 的 cycle_name：
+  // 12m 折成 yearly，5m / 18m / 60m 原样存下来；范围 1–1200 个月）。不认这一种，
+  // 一台 5m 的机器月摊会按「月付」算成 5 倍 —— 金额本身错（2026-11-06，与 jikasei 同轮）。
+  const custom = CUSTOM_MONTHS.exec(cycle)
+  const months = custom ? Number(custom[1]) : 0
+  return months >= 1 ? months : 1
 }
 
 /** 实际周期是几天。用户的「剩余天数」按这把尺子折。 */
 export function cycleDaysOf(cycle: string): number {
-  return CYCLE[cycle]?.days ?? 30
+  const named = CYCLE[cycle]
+  if (named) return named.days
+  const custom = CUSTOM_MONTHS.exec(cycle)
+  const months = custom ? Number(custom[1]) : 0
+  if (!(months >= 1)) return 30
+  // 与表内同一把尺子：半年以内按月（30 天），一年以上按年（365 天）折。
+  return months >= 12 ? Math.round((months * 365) / 12) : months * 30
 }
+
+/** hub 存「非具名整月周期」的写法：`5m` / `18m` / `60m`。 */
+const CUSTOM_MONTHS = /^(\d+)m$/
 
 /**
  * 内置汇率（兜底表）：1 单位该币种 = N 人民币。
@@ -65,6 +81,8 @@ export type FxSnapshot = {
   date: string
   /** true = 每日汇率（lib/fx.ts 拉的）；false = 内置表。 */
   live: boolean
+  /** live 快照里哪些币种其实来自内置兜底表（上游那天没给这一种）。fxNote 要照实说。 */
+  builtin?: string[]
 }
 
 export const FX_CNY: Record<string, number> = {
@@ -198,11 +216,19 @@ export function cny(amount: number): string {
  * 内置表写「按固定汇率折算」——文案与数字同源，不许说岔。
  */
 export function fxNote(used: string[], skipped: string[] = [], fx: FxSnapshot = FX_BUILTIN): string {
-  const rates = used
-    .filter((code) => code !== "CNY")
-    .map((code) => `${code} ¥${trimRate(fx.rates[code])}`)
-  const kind = fx.live ? "每日汇率" : `固定汇率 ${fx.date}`
-  const head = rates.length ? `${kind}：${rates.join("，")}` : "人民币记账，无需折算"
+  const codes = used.filter((code) => code !== "CNY")
+  const price = (code: string) => `${code} ¥${trimRate(fx.rates[code])}`
+  // 上游缺的币种由内置表补上：那几种不能拿「每日汇率」的口气报（文案与数字同源）。
+  const fixed = new Set(fx.live ? fx.builtin ?? [] : codes)
+  const liveCodes = codes.filter((code) => !fixed.has(code))
+  const fixedCodes = codes.filter((code) => fixed.has(code))
+  const liveNote = `每日汇率：${liveCodes.map(price).join("，")}`
+  const fixedNote = `固定汇率 ${fx.date}：${fixedCodes.map(price).join("，")}`
+  const head = codes.length === 0
+    ? "人民币记账，无需折算"
+    : !fx.live || liveCodes.length === 0
+      ? fixedNote
+      : fixedCodes.length === 0 ? liveNote : `${liveNote}；${fixedNote}`
   const miss = skipped.length ? `；${skipped.join("、")} 无汇率未计入` : ""
   return head + miss
 }

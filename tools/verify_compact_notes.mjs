@@ -142,16 +142,16 @@ async function renderAndExpand(cfg, label, w = 1440, h = 1200) {
   config = { listTop: 'none', pingLines: '北京电信', ...cfg }
   await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: w < 500 })
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
-  const table = await waitFor(`(() => { const rs = document.querySelectorAll('tbody tr[role=button]'); return rs.length >= 2 && document.fonts.status === 'loaded' })()`)
+  const table = await waitFor(`(() => { const rs = document.querySelectorAll('tbody tr[data-node-card]'); return rs.length >= 2 && document.fonts.status === 'loaded' })()`)
   await sleep(500)
   const opened = await evalJS(`(() => {
-    const row = document.querySelector('tbody tr[role=button]')
+    const row = document.querySelector('tbody tr[data-node-card]')
     if (!row) return 'no-row'
     if (row.getAttribute('aria-expanded') !== 'true') row.click()
     return row.getAttribute('aria-expanded')
   })()`)
   const chart = await waitFor(`(() => {
-    const row = document.querySelector('tbody tr[role=button]')
+    const row = document.querySelector('tbody tr[data-node-card]')
     const box = row && row.nextElementSibling ? row.nextElementSibling.querySelector('td > div') : null
     return !!box && !!box.querySelector('svg.recharts-surface')
   })()`, 40000)
@@ -161,7 +161,7 @@ async function renderAndExpand(cfg, label, w = 1440, h = 1200) {
 
 /** 展开区几何 + 图标/浮层状态。 */
 const PROBE = `JSON.stringify((() => {
-  const row = document.querySelector('tbody tr[role=button]')
+  const row = document.querySelector('tbody tr[data-node-card]')
   const panel = row ? row.nextElementSibling : null
   const box = panel ? panel.querySelector('td > div') : null
   if (!box) return { missing: true }
@@ -252,7 +252,7 @@ check('手机 390：标签带不显示、那枚图标显示（两套形态按断
   `标签带 ${mobClosed.stripVisible} / 图标 ${mobClosed.iconVisible}`)
 check('手机 390：不摊开时展开区高度与无备注时相同',
   mobClosed.boxH === JSON.parse(await evalJS(PROBE)).boxH && mobClosed.rangesH === mobClosed.rangesH, `高 ${mobClosed.boxH}`)
-await evalJS(`(() => { document.querySelector('tbody tr[role=button]').nextElementSibling.querySelector('[data-note-popover]').click(); return true })()`)
+await evalJS(`(() => { document.querySelector('tbody tr[data-node-card]').nextElementSibling.querySelector('[data-note-popover]').click(); return true })()`)
 await sleep(400)
 const mob = JSON.parse(await evalJS(PROBE))
 check('手机 390：点得开、三枚都在、浮层不越出视口、无横向溢出',
@@ -267,7 +267,7 @@ check('手机 390：图标的 aria-label 带上全部备注（读屏可读）',
 check('手机 390：那枚图标是原生 button、能被聚焦', mob.btnTag === 'BUTTON' && mob.expanded === 'true',
   `${mob.btnTag} aria-expanded=${mob.expanded}`)
 await evalJS(`(() => {
-  const b = document.querySelector('tbody tr[role=button]').nextElementSibling.querySelector('[data-note-popover]')
+  const b = document.querySelector('tbody tr[data-node-card]').nextElementSibling.querySelector('[data-note-popover]')
   b.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
   return true
 })()`)
@@ -275,7 +275,7 @@ await sleep(300)
 const afterEsc = JSON.parse(await evalJS(PROBE))
 check('手机 390：Esc 收起（且仍在列表页）',
   afterEsc.panelVisible === false && (await evalJS('location.pathname')) === '/', `panel=${afterEsc.panelVisible}`)
-await evalJS(`(() => { document.querySelector('tbody tr[role=button]').nextElementSibling.querySelector('[data-note-popover]').click(); return true })()`)
+await evalJS(`(() => { document.querySelector('tbody tr[data-node-card]').nextElementSibling.querySelector('[data-note-popover]').click(); return true })()`)
 await sleep(300)
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 30, y: 700, button: 'left', clickCount: 1 })
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 30, y: 700, button: 'left', clickCount: 1 })
@@ -283,11 +283,12 @@ await sleep(300)
 const afterOutside = JSON.parse(await evalJS(PROBE))
 check('手机 390：点浮层外面收起，且展开区高度回到与无备注时相同',
   afterOutside.panelVisible === false && afterOutside.boxH === mobClosed.boxH, `panel=${afterOutside.panelVisible} 高 ${afterOutside.boxH}/${mobClosed.boxH}`)
-await evalJS(`(() => { document.querySelector('tbody tr[role=button]').nextElementSibling.querySelector('[data-note-popover]').click(); return true })()`)
+await evalJS(`(() => { document.querySelector('tbody tr[data-node-card]').nextElementSibling.querySelector('[data-note-popover]').click(); return true })()`)
 await sleep(300)
 const still = await evalJS(`(() => {
-  const row = document.querySelector('tbody tr[role=button]')
-  return JSON.stringify({ rowExpanded: row.getAttribute('aria-expanded'), panel: row.nextElementSibling.querySelector('[data-note-panel]') !== null, path: location.pathname })
+  const row = document.querySelector('tbody tr[data-node-card]')
+  // 2026-11-06：aria-expanded 在名称列那枚真按钮上（<tr> 不再冒充 button）。
+  return JSON.stringify({ rowExpanded: (row.querySelector('button[aria-expanded]') || {}).getAttribute?.('aria-expanded') ?? null, panel: row.nextElementSibling.querySelector('[data-note-panel]') !== null, path: location.pathname })
 })()`)
 { const j = JSON.parse(still)
   check('手机 390：点那枚图标只摊浮层，不会把这一行收起来、也不跳页',
