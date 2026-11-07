@@ -32,12 +32,21 @@ export function bytes(n: number, digits?: number): string {
  * characters are what allow the two decimals: 111px against the 122px a card in
  * the four-column grid provides, where separate units require 132px. A pair
  * spanning two units has nothing to save and falls back to bytes().
+ *
+ * 与 bytes() 同一条进位规则（2026-11-07，与 jikasei 1.36.1 同步）：四舍五入顶到 1024
+ * 时要升一档，否则会印出「1024 / 1024 B」那种数值与单位对不上的坏数。另外 `unitOf` 对
+ * <1 的值会给 -1（`Math.log(0.5)/Math.log(1024)` 向下取整），`UNITS[-1]` 是 undefined
+ * —— 早先 `pair(0.5, 0.9)` 印的是「512.00 / 921.60 undefined」。
  */
 export function pair(used: number, total: number): string {
-  if (used > 0 && total > 0 && unitOf(used) === unitOf(total)) {
-    const i = unitOf(total)
-    const f = (n: number) => (n / 1024 ** i).toFixed(i === 0 ? 0 : 2)
-    return `${f(used)} / ${f(total)} ${UNITS[i]}`
+  const unit = used > 0 && total > 0 && unitOf(used) === unitOf(total) ? unitOf(total) : -1
+  if (unit >= 0) {
+    const f = (n: number, power: number) => (n / 1024 ** power).toFixed(power === 0 ? 0 : 2)
+    if (Number(f(total, unit)) >= 1024 && unit < UNITS.length - 1) {
+      const next = unit + 1
+      return `${f(used, next)} / ${f(total, next)} ${UNITS[next]}`
+    }
+    return `${f(used, unit)} / ${f(total, unit)} ${UNITS[unit]}`
   }
   return `${bytes(used)} / ${bytes(total)}`
 }
@@ -208,6 +217,20 @@ export function clock(ms: number): string {
 }
 
 /**
+ * 北京时间（固定 UTC+8）的时分 —— 「今日流量」浮层里峰值时刻用它（2026-11-07，与
+ * jikasei 1.36.1 同步）。
+ *
+ * 那个窗口本身按**北京时间 0 点**裁（见 @/lib/today-traffic 的 dayStart），浮层尾巴也写着
+ * 「按北京时间今天 00:00 起」；而 `clock` 走的是访客本机时区，UTC+8 之外的访客会把同一个
+ * 采样桶读成两个钟点。用固定 +8 偏移而不是 `timeZone: "Asia/Shanghai"`：与 site-settings
+ * 的 beijingHour 同一套，不赌运行环境的时区库（少数精简 ICU 上会抛）。中国不实行夏令时。
+ */
+export function clockBeijing(ms: number): string {
+  const d = new Date(ms + 8 * 3_600_000)
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`
+}
+
+/**
  * Axis ticks for a window `hours` wide. Beyond a day a bare "14:00" recurs each
  * midnight and the axis no longer indicates which day it refers to; beyond a week
  * the minutes are noise too (hub 1.3.2 起保留天数可到 365 天，30 天那种窗口一格跨几天，
@@ -350,6 +373,65 @@ export function innerTicks(lo: number, hi: number): number[] {
     out.push(v)
   }
   return out
+}
+
+/**
+ * 自动量程（`domain="auto"` 的图）：把数据量程摊成 count 格，步长取
+ * 「1 / 2 / 2.5 / 5 / 10 × 10^k」里第一个够大的，再把上下沿各向外扩到步长的整数倍
+ * —— 就是原来 recharts `domain={["auto","auto"]}` 那套效果（延迟轴不从 0 起：这些线路
+ * 活在一条窄带里，锚到 0 会把起伏压平）。
+ *
+ * ★这里是**裸的量程**：rakugaki 的「最近视距」下限（`AUTO_MIN_SPAN_RATIO`）由下面的
+ *   `autoRange` 先撑开量程再进来 —— 两条护栏各管一段，别合并。
+ * ★数据平直（窗口里只有一个采样点、或「削峰」把离群点抹成中位数之后整条线是常数）时，
+ *   上下各留一点余量，否则量程为零、除不出刻度。余量按 10%，但**只有绝对值大于 1** 才按
+ *   10%：亚毫秒线路的 ±10% 比 1ms 还小，仍是零量程。
+ * ★非负数据的下沿不许落到 0 以下（2026-11-07，与 jikasei 1.36.1 同步）：这条护栏原来写在
+ *   下面 `low` 那一行（`lo >= 0 ? Math.max(0, …)`），可 `lo` 在算那一行之前已经被上面这段
+ *   pad 减成负数了，条件恒假 —— 整窗 0ms 的线路照样从 -0.2 起、刻度印出「-0.2ms」。现在在
+ *   pad 那里就夹住，负数数据（若有）不受影响。
+ * ★`ticks` 用精确倍数算，并由调用方按步长定小数位（见 Chart 的 yDigits）。
+ */
+export function niceScale(lo: number, hi: number, count = 4): { lo: number; hi: number; ticks: number[] } {
+  if (!(hi > lo)) {
+    const pad = Math.abs(hi) > 1 ? Math.abs(hi) * 0.1 : 1
+    lo = hi >= 0 ? Math.max(0, lo - pad) : lo - pad
+    hi += pad
+  }
+  const raw = (hi - lo) / count
+  const mag = 10 ** Math.floor(Math.log10(Math.max(raw, Number.MIN_VALUE)))
+  const step = STEPS.map((m) => m * mag).find((n) => n >= raw) ?? raw
+  const low = Math.floor(lo / step) * step
+  const high = Math.ceil(hi / step) * step
+  const ticks: number[] = []
+  for (let v = low; v <= high + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6)
+  return { lo: low, hi: high, ticks }
+}
+
+/**
+ * 自动量程 + rakugaki 的「最近视距」：数据量程窄于 `max(hi, 1) * ratio` 时，以中值为轴把窗口
+ * 撑到那个宽度，再交给 `niceScale` 取整齐刻度（ratio 见 Chart.tsx 的 `AUTO_MIN_SPAN_RATIO`；
+ * 卡片走势线 Latency.tsx 共用同一个常数）。
+ *
+ * ★数据非负时，撑开的窗口要**整段上移**，别让「余量」把下沿推到 0 以下（2026-11-07）：
+ *   否则整窗 0ms 的线路会拿到 [-0.125, 0.125] 这样的窗口，`niceScale` 再扩到整步长就成了
+ *   [-0.2, 0.2]，轴上印出「-0.2ms」「-0.1ms」——正是这条「最近视距」自己引出来的负刻度。
+ *   上移保住跨度、也保住「平直线画在中间偏下」的观感（0 落在轴底）。
+ */
+export function autoRange(lo: number, hi: number, ratio: number, count = 4): { lo: number; hi: number; ticks: number[] } {
+  const minSpan = Math.max(hi, 1) * ratio
+  let a = lo
+  let b = hi
+  if (hi - lo < minSpan) {
+    const mid = (lo + hi) / 2
+    a = mid - minSpan / 2
+    b = mid + minSpan / 2
+    if (lo >= 0 && a < 0) {
+      b -= a
+      a = 0
+    }
+  }
+  return niceScale(a, b, count)
 }
 
 /**

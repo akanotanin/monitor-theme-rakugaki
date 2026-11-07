@@ -91,8 +91,11 @@ const CHIPS = 3
 const pctText = (v: number) => `${v < 10 ? v.toFixed(1) : v.toFixed(0)}%`
 
 function Readout({ label, value, pct, title }: { label: string; value: string; pct: number | null; title?: string }) {
-  const filled = pct === null ? 0 : Math.min(100, Math.max(0, pct))
-  const hot = pct !== null && filled >= 85
+  // 与 Meter 同一条护栏（2026-11-07，与 jikasei 1.36.1 同步）：`NaN` 进 `width` 是非法
+  // 声明，块会退成 auto、条反而画满。
+  const valid = typeof pct === "number" && Number.isFinite(pct)
+  const filled = valid ? Math.min(100, Math.max(0, pct)) : 0
+  const hot = valid && filled >= 85
   return (
     <div className="min-w-0" title={title}>
       <div className="truncate text-xs text-muted-foreground">{label}</div>
@@ -121,6 +124,10 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
   // 底注只有一行，只取前 CHIPS 枚。访客那边 hub 只下发公有那几枚，所以同一个位置他们看到的就是公有。
   const chips = remarksOnCards(remarkPlacement ?? "both") ? remarkChips(node).slice(0, CHIPS) : []
   const note = noteText(node)
+  // 总流量那条：与 Meter 同一条护栏（NaN 在 width 里是非法声明，块退成 auto、条反而画满）。
+  const trafficPct = node.traffic_limit > 0 ? percent(monthUsage(node), node.traffic_limit) : 0
+  const trafficBar = Number.isFinite(trafficPct) ? Math.min(100, Math.max(0, trafficPct)) : 0
+  const trafficHot = trafficBar >= 85
   return (
     <Card
       onClick={onOpen}
@@ -221,10 +228,10 @@ export function WideCard({ node, onOpen, onWarm, terms, remarkPlacement, selecte
               流量重置：{node.traffic_limit > 0 ? `每月 ${node.traffic_reset_day} 日` : "N/A"}
             </span>
           </div>
-          <div className={`sk-bar mt-1 h-[6px] w-full${node.traffic_limit > 0 && percent(monthUsage(node), node.traffic_limit) >= 85 ? " sk-bar-hot" : ""}`}>
+          <div className={`sk-bar mt-1 h-[6px] w-full${node.traffic_limit > 0 && trafficHot ? " sk-bar-hot" : ""}`}>
             <div
               className="sk-bar-fill h-full"
-              style={{ width: `${node.traffic_limit > 0 ? percent(monthUsage(node), node.traffic_limit) : 0}%` }}
+              style={{ width: `${trafficBar}%` }}
             />
           </div>
 

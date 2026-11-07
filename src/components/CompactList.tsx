@@ -54,9 +54,12 @@ const NodeDetail = lazy(() => import("@/components/NodeDetail").then((m) => ({ d
  * 第四种形态才不像另一套零件拼的；没有上限（流量不限）就留空，与 Meter 对 null 一致。
  */
 function Bar({ pct }: { pct: number | null }) {
-  const filled = pct === null ? 0 : Math.min(100, Math.max(0, pct))
+  // 与 Meter 同一条护栏（2026-11-07，与 jikasei 1.36.1 同步）：`NaN` 进 `width` 是非法
+  // 声明，浏览器丢掉之后块仍是 auto —— 条反而画满，读数还印「NaN%」。
+  const valid = typeof pct === "number" && Number.isFinite(pct)
+  const filled = valid ? Math.min(100, Math.max(0, pct)) : 0
   // 与 Meter 同一处阈值：快满了换成陶土橙。第四种形态也是同一套读数口径。
-  const hot = pct !== null && filled >= 85
+  const hot = valid && filled >= 85
   return (
     <div className={`sk-bar mt-1.5 h-2 w-full${hot ? " sk-bar-hot" : ""}`}>
       <div className="sk-bar-fill h-full" style={{ width: `${filled}%` }} />
@@ -66,7 +69,8 @@ function Bar({ pct }: { pct: number | null }) {
 
 /** 与 Meter 同一口径：一位小数只留给个位数，上了两位数就取整，免得列宽跟着数字跳。 */
 function pctText(p: number | null): string {
-  return p === null ? "—" : `${p < 10 ? p.toFixed(1) : p.toFixed(0)}%`
+  // 没读数与坏读数都写「—」：印「NaN%」等于报了一个不存在的百分比。
+  return p === null || !Number.isFinite(p) ? "—" : `${p < 10 ? p.toFixed(1) : p.toFixed(0)}%`
 }
 
 /**

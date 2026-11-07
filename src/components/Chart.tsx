@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 import { ChartTooltip } from "@/components/ChartTooltip"
-import { clockFor, innerTicks, quarters, timeTicks, zoomSpan } from "@/lib/format"
+import { autoRange, clockFor, innerTicks, quarters, timeTicks, zoomSpan } from "@/lib/format"
 
 /**
  * 零依赖的时间序列图：替掉 recharts（它给详情页背了 384KB 原始 / 110KB gzip 的包，
@@ -63,28 +63,9 @@ function extentOf(view: ChartRow[], keys: string[]): [number, number] | null {
   return lo === Infinity ? null : [lo, hi]
 }
 
-/**
- * 自动刻度的整齐步长：把量程摊成 count 格，每格取「1 / 2 / 2.5 / 5 / 10 × 10^k」里第一个够大的，
- * 再把上下沿各向外扩到步长的整数倍 —— 就是原来 recharts `domain={["auto","auto"]}` 那套效果
- * （延迟轴不从 0 起：这些线路活在一条窄带里，锚到 0 会把起伏压平）。
- */
-function niceScale(lo: number, hi: number, count = 4): { lo: number; hi: number; ticks: number[] } {
-  if (!(hi > lo)) {
-    const pad = Math.abs(hi) > 1 ? Math.abs(hi) * 0.1 : 1
-    lo -= pad
-    hi += pad
-  }
-  const raw = (hi - lo) / count
-  const mag = 10 ** Math.floor(Math.log10(Math.max(raw, Number.MIN_VALUE)))
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((n) => n >= raw) ?? raw
-  // 数据本身非负（延迟 / 速率 / 百分比）时量程不许落到 0 以下：平直且 ≤1ms 的线路会被
-  // 上面的 pad 扩成 −1..1.5，刻度印出「−1ms」（2026-11-06）。
-  const low = lo >= 0 ? Math.max(0, Math.floor(lo / step) * step) : Math.floor(lo / step) * step
-  const high = Math.ceil(hi / step) * step
-  const ticks: number[] = []
-  for (let v = low; v <= high + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6)
-  return { lo: low, hi: high, ticks }
-}
+// 自动量程在 @/lib/format：`autoRange`（撑「最近视距」+ 取整齐刻度）与它用的裸函数
+// `niceScale`，都是纯函数、带单测。这一层只把常量 AUTO_MIN_SPAN_RATIO 传进去；平直线路的
+// 「下沿不落到 0 以下」那条护栏在两个函数里各有分工（2026-11-07 修：原实现恒不成立）。
 
 /**
  * 自动量程的「最近视距」：Y 轴跨度至少摊开顶端值的这个比例，再窄的波动不再往里怼。
@@ -198,18 +179,16 @@ export function TimeChart({
   const span = Math.max(1, t1 - t0)
 
   // 刻度：零起点用 quarters(top)；自动档拿数据量程取整齐步长，但量程至少摊开
-  // AUTO_MIN_SPAN_RATIO 那么宽（「最近视距」，见常量注释）——窄波动不再被怼满全高。
+  // AUTO_MIN_SPAN_RATIO 那么宽（「最近视距」）——窄波动不再被怼满全高。撑窗口与取刻度的
+  // 纯函数在 @/lib/format 的 autoRange（非负数据不会被余量推到 0 以下，见那里的注释）。
   const autoExtent = extentOf(view, series.map((s) => s.key))
+  // 零起点的轴顶：容量还没报上来时 `top` 是 0，刻度与量程必须用**同一个**兜底值 ——
+  // `quarters(0)` 会给出五条重复的 0，而 `hi` 取的是 1，刻度就全挤在轴底（2026-11-07 修）。
+  const zeroTop = top > 0 ? top : 1
   const autoScale =
     domain === "auto"
-      ? (() => {
-          const [lo, hi] = autoExtent ?? [0, 1]
-          const minSpan = Math.max(hi, 1) * AUTO_MIN_SPAN_RATIO
-          if (hi - lo >= minSpan) return niceScale(lo, hi)
-          const mid = (lo + hi) / 2
-          return niceScale(mid - minSpan / 2, mid + minSpan / 2)
-        })()
-      : { lo: 0, hi: top > 0 ? top : 1, ticks: quarters(top) }
+      ? autoRange(...(autoExtent ?? [0, 1]), AUTO_MIN_SPAN_RATIO)
+      : { lo: 0, hi: zeroTop, ticks: quarters(zeroTop) }
   // 手动档（滚轮缩放）：边界就是滚出来的精确值、刻度只挑范围内的整齐数（见 innerTicks）——
   // 自动档那套「向外扩到整步长」会把锚点随每次滚动蹭走，滚轮手感靠的就是锚点不漂。
   const scale = yZoom ? { lo: yZoom.lo, hi: yZoom.hi, ticks: innerTicks(yZoom.lo, yZoom.hi) } : autoScale
@@ -219,10 +198,12 @@ export function TimeChart({
   const y = (value: number) => TOP + plotH - ((value - scale.lo) / yRange) * plotH
 
   // 滚轮监听器只装一次，量程与几何从 ref 里现读（渲染期间写 ref 是「最新值」的标准做法，
-  // 放 layout effect 里保证每次渲染后都对齐）。
-  const wheelRef = useRef({ lo: 0, hi: 0, plotH: 0, dataHi: 0 })
+  // 放 layout effect 里保证每次渲染后都对齐）。`dataLo/dataHi` 是**自动量程**的范围，滚轮
+  // 跨度的下限由它推出来 —— 一并放进 ref：挂在外面的话监听器会闭包住第一次渲染时的旧值，
+  // 而把 `autoExtent` 写进依赖数组又会每渲染都换一个身份、监听器反复重装（2026-11-07）。
+  const wheelRef = useRef({ lo: 0, hi: 0, plotH: 0, dataLo: 0, dataHi: 0 })
   useLayoutEffect(() => {
-    wheelRef.current = { lo: scale.lo, hi: scale.hi, plotH, dataHi: autoExtent?.[1] ?? 0 }
+    wheelRef.current = { lo: scale.lo, hi: scale.hi, plotH, dataLo: autoExtent?.[0] ?? 0, dataHi: autoExtent?.[1] ?? 0 }
   })
   // 滚轮缩放（`wheelZoom` 且 domain=auto）：非 passive（要 preventDefault 住页面滚动），
   // 光标压着的那个值当锚点收放；夹子两道（跨度 ≥ ZOOM_MIN_SPAN、顶端 ≤ zoomCapOf）。
@@ -247,8 +228,8 @@ export function TimeChart({
       const anchor = st.hi - ratio * (st.hi - st.lo)
       // 跨度下限：min(1ms, 自动量程的 1/4)。亚毫秒线路的自动量程本来就窄于 1ms，固定 1ms 会把
       // 第一格滚轮变成「放大 + 锚点跳走」、下沿贴 0 时更会双向卡死（2026-10-15 审出来，量程数学
-      // 与三道夹子都挪进 format.ts 的 zoomSpan，配了单测）。
-      const floor = Math.min(ZOOM_MIN_SPAN, Math.max((autoExtent ? autoExtent[1] - autoExtent[0] : 0) * 0.25, 1e-9))
+      // 与三道夹子都挪进 format.ts 的 zoomSpan，配了单测）。范围从 ref 现读，不闭包旧值。
+      const floor = Math.min(ZOOM_MIN_SPAN, Math.max((st.dataHi - st.dataLo) * 0.25, 1e-9))
       setYZoom(zoomSpan({ lo: st.lo, hi: st.hi, anchor, ratio, factor: f, floor, cap: zoomCapOf(st.dataHi) }))
     }
     el.addEventListener("wheel", onWheel, { passive: false })
