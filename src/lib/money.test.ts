@@ -99,13 +99,14 @@ const capped = budgetOf([node({ price: 100, currency: "CNY", billing_cycle: "yea
 eq(round(capped.remaining), 100, "剩余天数超过周期时封顶为价格")
 
 /* 旧 hub 没有 expires_in：退回按 expires_at 自己数（与卡片上的到期同一条路）。 */
-// ★这个日期要按**本地**日历算（与 @/lib/money 里数天数的口径一致）。原来用 toISOString() 取的是
-//   UTC 那天：本地 0–8 点之间它会比本地日期早一天，于是「剩 15 天」被数成 14 天——夹具自己的坑，
-//   与运行时无关（每天凌晨必红，白天又自己变绿）。
+// ★这个日期要按**北京日历**算 —— money.ts 走的是 daysUntil()，那条是固定 UTC+8 的日历。
+//   这里写过两次坑：最早用 toISOString()（UTC 那天），本地 0–8 点之间比本地日期早一天、
+//   凌晨必红；改成 setDate() 的本地日历之后，本地 UTC+8 是对了，可 CI runner 是 UTC，
+//   跑在 16:00–24:00 UTC（= 北京次日）时又差一天（2026-11-23T20:20Z 那次 ci 的红）。
+//   正解是同 format.test.ts：直接按 UTC+8 取日期串，与 daysUntil 完全同源。
 const iso = (days: number) => {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  const d = new Date(Date.now() + 8 * 3_600_000 + days * 86_400_000)
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
 }
 const legacy = budgetOf([{ ...node({ price: 30, currency: "CNY", billing_cycle: "monthly" }), expires_in: undefined, expires_at: iso(15) } as unknown as Node])
 eq(round(legacy.remaining), 15, "旧 hub 按 expires_at 自己数（剩 15 天 → 一半）")

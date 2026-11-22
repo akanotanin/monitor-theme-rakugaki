@@ -161,10 +161,18 @@ eq(clockBeijing(Date.UTC(2026, 5, 30, 15, 59)), "23:59", "UTC 15:59 → 北京 2
 
 // daysUntil: whole days, negative once past, null when there is no date.
 {
+  /**
+   * ★按**北京时间**取「今天 + days 天」的日期串 —— 口径必须与 daysUntil 一致（它用的是
+   * 固定 UTC+8 的日历，见 format.ts）。
+   *
+   * 这里原来用本机本地时区（`d.getDate()` 那一套）：开发机在 UTC+8 永远看不出问题，可是
+   * CI runner 是 UTC，只要跑在 **16:00–24:00 UTC**（= 北京次日）这段，本地「今天」就比
+   * 北京「今天」晚一天，于是 at(10) 被 daysUntil 算成 9 天、「已过期为负」算成 -4 —— 同一个
+   * commit 白天绿、晚上红（2026-11-23T20:20Z 那次 ci 就是这么红的）。
+   */
   const at = (days: number) => {
-    const d = new Date()
-    d.setDate(d.getDate() + days)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    const d = new Date(Date.now() + 8 * 3_600_000 + days * 86_400_000)
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
   }
   eq(daysUntil(at(10)), 10, "十天后")
   eq(daysUntil(at(-3)), -3, "已过期为负")
