@@ -50,8 +50,9 @@ import { FOREVER, bytes, cycleName, daysUntil, money, osName, pair, percent, rat
 const NodeDetail = lazy(() => import("@/components/NodeDetail").then((m) => ({ default: m.NodeDetail })))
 
 /**
- * 单元格内的一条细进度条。高度、圆角、色值都照 Meter 来（h-1.5、填色 bg-foreground 纯前景色），
- * 第四种形态才不像另一套零件拼的；没有上限（流量不限）就留空，与 Meter 对 null 一致。
+ * 单元格内的一条细进度条。高度、圆角、色值都照 Meter 来（详细/经典档 h-2.5、简约档 h-1.5；
+ * 填色都走 `.sk-bar-fill` 的 62% 墨），第四种形态才不像另一套零件拼的；没有上限（流量不限）
+ * 就留空，与 Meter 对 null 一致。
  */
 function Bar({ pct }: { pct: number | null }) {
   // 与 Meter 同一条护栏（2026-11-07，与 jikasei 1.36.1 同步）：`NaN` 进 `width` 是非法
@@ -84,7 +85,10 @@ function shortUptime(node: Node): string {
   const d = Math.floor(s / 86400)
   if (d > 0) return `${d} 天`
   const h = Math.floor(s / 3600)
-  return h > 0 ? `${h} 小时` : `${Math.floor(s / 60)} 分`
+  if (h > 0) return `${h} 小时`
+  // <60 秒别印「0 分」：那读起来像「没上线」，实际是刚起来。写「不到 1 分」。
+  const m = Math.floor(s / 60)
+  return m > 0 ? `${m} 分` : "不到 1 分"
 }
 
 /**

@@ -38,7 +38,7 @@ import type { Node } from "@/lib/api"
  * 字体串与 index.css 的 `.globe-label` 必须一致（字号也在这里，改一处要改两处）。
  * 量不出来（老浏览器 / 没有 canvas）返回 null，调用方退回估法。
  */
-const LABEL_FONT = '9.35px ui-monospace, SFMono-Regular, "IBM Plex Mono", monospace'
+const LABEL_FONT = '9.35px ui-monospace, SFMono-Regular, "IBM Plex Mono", "Rakugaki Kai", monospace'
 let labelCtx: CanvasRenderingContext2D | null | undefined
 function measureLabel(text: string): number | null {
   if (labelCtx === undefined) {

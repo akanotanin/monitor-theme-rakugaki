@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentType, type ReactNode } from "react"
+import { useState, type ComponentType, type ReactNode } from "react"
 import {
   ArrowDown, ArrowDownUp, ArrowUp, CalendarClock, Cpu, HardDrive, Lock, MemoryStick,
 } from "lucide-react"
@@ -260,9 +260,8 @@ export function NodeCard({ node, onOpen, onOpenLatency, onWarm, latencyLines, ca
   const chips = remarksOnCards(remarkPlacement ?? "both") ? remarkChips(node) : []
   // 「经典」「延迟」两档右上角那枚 ⓘ 悬浮层已于 2026-10-14 按站长要求退役：
   // 计费与到期改在详情页看（NodeDetail 的「计费 / 到期」两格），这两档卡面不再摊任何浮层。
-  // 「详细」档标题行那一格：悬停弹悬浮层，把放不下的备注看全（只有这一档有，另两档收在 ⓘ 里）。
+  // 「详细」档标题行那一格：悬停弹悬浮层，把放不下的备注看全（只有这一档有）。
   const [titlePeek, setTitlePeek] = useState(false)
-  const titlePeekRef = useRef<HTMLSpanElement>(null)
   // 卡片底部那一行网络：简约 / 延迟两档共用**同一个节点**——一行两段，左边实时速率（墨色）、
   // 右边累计总量（弱化灰），上面一条手画的分隔线；方向用文字 ↓ ↑ 而不是图标，这样整段能原样
   // 复制成「↓ 88 B/s ↑ 312 B/s」。延迟档原本是「上下行各一组、组内用分隔点连起来」的两端式，
@@ -344,7 +343,6 @@ export function NodeCard({ node, onOpen, onOpenLatency, onWarm, latencyLines, ca
              鼠标移到这一格上弹悬浮层看全（多枚、完整文字）。★悬浮层必须挂在这个**没有 overflow-hidden**
              的外层上，否则会被裁掉看不见；内层才是那条会裁的一行。 */
           <span
-            ref={titlePeekRef}
             className="relative ml-auto flex min-w-0 max-w-[40%] grow basis-0 items-center justify-end sm:max-w-[55%]"
             onPointerEnter={() => setTitlePeek(true)}
             onPointerLeave={() => setTitlePeek(false)}

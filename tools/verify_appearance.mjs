@@ -65,14 +65,29 @@ await send('Runtime.enable'); await send('Page.enable')
 let pass = 0, fail = 0
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? ' — ' + extra : ''}`); if (ok) pass++; else fail++ }
 
-/** 冻结页面里的 Date（auto 档靠它判北京时间的钟点）。 */
+/**
+ * 冻结页面里的 Date（auto 档靠它判北京时间的钟点）。
+ *
+ * ★移除必须带 `identifier`：`Page.removeScriptToEvaluateOnNewDocument({})` 会回
+ * `-32602 Invalid parameters`，而这里的 `.catch(() => { })` 又把错误吞掉 —— 冻结脚本
+ * 于是跨场景一路累积，后面每一个场景的 Date 都停在第一次冻的那个钟点上（实测：解冻之后
+ * `new Date()` 仍返回冻结值），auto 档的白天/夜间两条断言因此互相污染。
+ * 改成记下每一条注入脚本的 id，移除时逐条传回去。
+ */
+const frozenIds = []
 async function setFrozen(iso) {
-  await send('Page.removeScriptToEvaluateOnNewDocument', {}).catch(() => { })
-  await send('Page.addScriptToEvaluateOnNewDocument', {
+  while (frozenIds.length) {
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: frozenIds.pop() })
+  }
+  const added = await send('Page.addScriptToEvaluateOnNewDocument', {
     source: iso
       ? `(() => { const R = Date; const fixed = new R(${JSON.stringify(iso)}).getTime(); class D extends R { constructor(...a) { if (!a.length) super(fixed); else super(...a) } static now() { return fixed } } window.Date = D })()`
       : 'true',
   })
+  const identifier = added?.result?.identifier
+  // 拿不到 id 就等于移除不了：宁可当场炸掉，也别让它静默污染后面的场景。
+  if (identifier === undefined) throw new Error('Page.addScriptToEvaluateOnNewDocument 没回 identifier，冻结无法移除')
+  frozenIds.push(identifier)
 }
 
 async function load({ config, systemDark = false, visitor = null, globePref = undefined, freeze = null }) {
