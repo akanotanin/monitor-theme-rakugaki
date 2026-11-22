@@ -9,7 +9,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // 主按钮：陶土橙底 + 墨色字（橙底白字的对比度不够，ccrouter 也是墨色字）。
+        // 主按钮：陶土橙底 + 墨色字（橙底白字在这个色阶上对比度不够）。
         // sk-btn-primary：`.sk-btn` 的兜底 color 是未分层规则、会压掉 text-primary-foreground，
         // 主按钮的文字色得靠这一条定向要回来（见 index.css）。
         default: "sk-btn sk-btn-primary bg-primary text-primary-foreground font-semibold",

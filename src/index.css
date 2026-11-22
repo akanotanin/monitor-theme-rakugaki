@@ -43,7 +43,7 @@
   /* 原生控件（滚动条、下拉、日期选择器）跟着这一档走：不声明就会一直是亮色的。
      index.html 的首帧内联脚本也把同一档写进 documentElement.style.colorScheme。 */
   color-scheme: light;
-  /* ---- 纸与墨：整套配色的根。ccrouter.app 那一套手绘纸感——米白纸面、近黑墨线、
+  /* ---- 纸与墨：整套配色的根。手绘纸感——米白纸面、近黑墨线、
      陶土色点缀、硬偏移的影子（不是模糊阴影），边框用手写感的歪圆角而不是标准圆角。 */
   --paper: #faf9f5;
   --paper-warm: #f0eee6;
@@ -85,7 +85,7 @@
   --shadow-card: 6px 6px 0 var(--fill-oat);
   --shadow-pop: 9px 9px 0 var(--fill-oat);
 
-  /* 歪圆角：四个角半径互不相同，看着像手画的框。名字沿用 ccrouter 的那几档。
+  /* 歪圆角：四个角半径互不相同，看着像手画的框。名字沿用上游那几档。
      数值看着夸张，但 CSS 会把它们按比例压到不超过盒子尺寸，所以同一组值在小胶囊上
      是「叶子形」、在大卡片上是「微歪的方框」——正是要的这个效果。 */
   --r-sketch: 255px 15px 225px 15px / 15px 225px 15px 255px;
@@ -119,7 +119,7 @@
   --popover: var(--elev);
   --popover-foreground: var(--ink);
   /* 主色是那枚陶土橙：主按钮、选中的页签、图表里的强调线都用它。
-     压在它上面的字用墨色而不是白色——橙底白字的对比度不够（ccrouter 也是这么配的）。 */
+     压在它上面的字用墨色而不是白色——橙底白字在这个色阶上对比度不够。 */
   --primary: var(--accent);
   --primary-foreground: var(--on-accent);
   --secondary: var(--paper-warm);
@@ -497,7 +497,7 @@
   pointer-events: none;
 }
 
-/* 顶栏那枚站标：36px 的白底小方块 + 1.5px 墨线 + 9px 圆角（ccrouter 的 brand-mark）。 */
+/* 顶栏那枚站标：36px 的白底小方块 + 1.5px 墨线 + 9px 圆角。 */
 .sk-mark {
   border: 1.5px solid var(--stroke);
   border-radius: 9px;
