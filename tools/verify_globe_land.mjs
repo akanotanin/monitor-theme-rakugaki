@@ -18,6 +18,9 @@ import { createServer } from 'node:http'
 import { join, extname, normalize } from 'node:path'
 import { camera, VIEW, regionOf } from '../src/lib/globe.ts'
 import { WORLD_OUTLINES } from '../src/lib/world.ts'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = 5441
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon' }
@@ -72,7 +75,7 @@ const inRing = (lon, lat, ring) => {
 }
 const isLand = (lon, lat) => rings.some((r) => inRing(lon, lat, r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbgPort = 9910 + Math.floor(Math.random() * 9)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbgPort}`, '--remote-allow-origins=*', '--no-first-run',
   '--disable-gpu', '--hide-scrollbars', '--window-size=1440,900',

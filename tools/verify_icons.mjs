@@ -20,6 +20,9 @@ import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { extname, join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = Number(process.env.ICON_PORT || 5199)
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
@@ -72,7 +75,7 @@ await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 const BASE = `http://127.0.0.1:${PORT}`
 console.log(`dist/ 伺服在 ${BASE}/`)
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 let chrome, dbgPort, wsUrl = null
 for (let attempt = 0; attempt < 2 && !wsUrl; attempt++) {
   dbgPort = 9910 + Math.floor(Math.random() * 80)

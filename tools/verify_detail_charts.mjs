@@ -16,6 +16,9 @@ import { join, extname, normalize } from 'node:path'
 // 期望值用**页面同一套函数**算（手写刻度是猜的：轴顶走的是 axisTop 的阶梯，
 // 这台夹具的最大 CPU 16% 给出的是 0/4/8/12/16，不是 0/5/10/15/20）。
 import { axisTop, quarters } from '../src/lib/format.ts'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const REAL = process.argv[2] || ''
 const UPSTREAM = (process.argv[3] || '').replace(/\/$/, '')
@@ -119,7 +122,7 @@ const server = createServer((req, res) => {
 })
 if (!REAL) await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbgPort = 9960 + Math.floor(Math.random() * 15)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbgPort}`, '--remote-allow-origins=*', '--no-first-run',
   '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars', '--window-size=1000,1200', '--force-device-scale-factor=2',

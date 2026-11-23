@@ -13,11 +13,11 @@
 // 数据来源：**拍照必须用中性环境**（隔离测试 hub 的测试节点），别拿现网 hub 实拍 ——
 // 这张图会公开发在 GitHub 上，现网截图会连带暴露真实节点名与预付金额。
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const BASE = (process.argv[2] || 'http://127.0.0.1:28081').replace(/\/$/, '')
 const OUT = process.argv[3] || 'preview.png'
@@ -37,12 +37,7 @@ const SHORT = 'rakugaki'
 const STYLE = process.argv[7] || null
 const EXTRA = process.argv[8] ? JSON.parse(process.argv[8]) : {}
 const PORT = 9700 + Math.floor(Math.random() * 200)
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${PORT}`, '--remote-allow-origins=*',

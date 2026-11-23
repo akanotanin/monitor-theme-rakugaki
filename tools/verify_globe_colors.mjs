@@ -15,6 +15,9 @@ import { extname, join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { camera, VIEW } from '../src/lib/globe.ts'
 import { WORLD_OUTLINES } from '../src/lib/world.ts'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = Number(process.env.COLOR_PORT || 5202)
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
@@ -88,7 +91,7 @@ const server = createServer((req, res) => {
 })
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbg = 9990 + Math.floor(Math.random() * 20)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', '--window-size=1280,900', '--user-data-dir=' + (process.env.TEMP || '/tmp') + '/globeColor-' + dbg, 'about:blank'], { stdio: 'ignore' })

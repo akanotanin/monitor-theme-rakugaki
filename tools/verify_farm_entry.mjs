@@ -21,6 +21,9 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const OUT = process.argv[2] || 'shots/farm-entry'
 // 端口可覆盖：5199 是 serve.mjs 的默认位，本机常被别的会话/stub 占着（实测被占时这条
@@ -63,11 +66,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 mkdirSync(OUT, { recursive: true })
 
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  '/usr/bin/google-chrome',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 
 // 机器上常有别的 Chrome（用户自己的 + 测试残留），端口紧张：起不来就换端口再来一次。
 let chrome, dbgPort, wsUrl = null

@@ -12,8 +12,10 @@
 //   ⑤ 直接落在 /node/{id}（书签、刷新）时立刻取，不等列表那条路。
 // 判定一律用数字与网络事件，不看截图。
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const UPSTREAM = process.argv[2]
 const NODE_ID = process.argv[3] || '1'
@@ -37,7 +39,7 @@ if (!up) { console.error('本地伺服没起来：\n' + serverLog); server.kill(
 const wantNodes = (await (await fetch(`${base}/api/nodes`)).json()).nodes?.length ?? 0
 console.log(`本地伺服装好：${base}（静态 = 本机 dist/，/api/* → ${UPSTREAM}，上游 ${wantNodes} 台）\n`)
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const PORT_DBG = 9400 + Math.floor(Math.random() * 300)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT_DBG}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',

@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const OUTDIR = (process.argv[2] || '.').replace(/\/$/, '')
 const PORT = 5212
@@ -53,7 +54,7 @@ const server = createServer((req, res) => {
 })
 await new Promise((r) => server.listen(PORT, r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbg = 9987
 let wsUrl = null
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',

@@ -13,6 +13,9 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { join, extname, normalize } from 'node:path'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const REAL = process.argv[2] || ''
 const PORT = 5211
@@ -61,7 +64,7 @@ const server = createServer((req, res) => {
 })
 if (!REAL) await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbgPort = 9990 + Math.floor(Math.random() * 15)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbgPort}`, '--remote-allow-origins=*', '--no-first-run',
   '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars', '--window-size=390,844',

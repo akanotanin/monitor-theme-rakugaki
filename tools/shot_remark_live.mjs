@@ -12,8 +12,9 @@
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 // 两种用法：
 //   node tools/shot_remark_live.mjs <上游hub地址> [输出目录]     静态=本机 dist/，数据与形态桩在上面（默认）
@@ -27,10 +28,7 @@ mkdirSync(OUT_DIR, { recursive: true })
 const SHORT = 'rakugaki'
 const PORT = 5500 + Math.floor(Math.random() * 300)
 const CDP_PORT = 9700 + Math.floor(Math.random() * 200)
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 
 // 真实数据（含备注）先读一遍：既当取景目标，也把「这台机器写了什么」打印出来供核对。
 const live = await (await fetch(`${UPSTREAM}/api/nodes`)).json()

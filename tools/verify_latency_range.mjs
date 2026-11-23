@@ -14,8 +14,9 @@
 // 站点在 Cloudflare 后面时，需要走本机代理（PROXY 环境变量，默认 127.0.0.1:2080）；
 // baseUrl 是本机地址（127.0.0.1/localhost）时不加代理。
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const BASE = (process.argv[2] || 'http://127.0.0.1:28081').replace(/\/$/, '')
 const OUT = process.argv[3] || 'shots/latency-range'
@@ -23,12 +24,7 @@ const NODE_ID = process.argv[4] || ''
 const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/.test(BASE)
 const PROXY = process.env.PROXY || (LOCAL ? '' : 'http://127.0.0.1:2080')
 const PORT = 9700 + Math.floor(Math.random() * 60)
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 
 mkdirSync(OUT, { recursive: true })
 

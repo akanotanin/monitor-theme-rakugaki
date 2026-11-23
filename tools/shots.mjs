@@ -14,20 +14,16 @@
 // 全套连拍十几次请求时，hub 对并发的历史窗口有上限，偶尔会撞上 503 —— 那一张会拍到
 // 「读取历史数据失败」，单拍重来即可，不是主题的问题。
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const BASE = (process.argv[2] || 'http://127.0.0.1:28081').replace(/\/$/, '')
 const OUT = process.argv[3] || 'shots'
 // 第三个参数可选：只拍名字里含这个串的机位（调一张图时不用等全套）。
 const ONLY = process.argv[4] || ''
 const PORT = 9600 + Math.floor(Math.random() * 60)
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 
 mkdirSync(OUT, { recursive: true })
 

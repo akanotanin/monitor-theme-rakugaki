@@ -7,8 +7,8 @@
 // 就是站名、没有占位值闪过（innerHTML 内联那段的来源记成 inline）③ 控制台无异常。
 // 静态走本机是为了把隧道对静态文件的那点干扰分开；数据仍是真的。
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const UPSTREAM = process.argv[2]
 const PORT = 5399
@@ -25,7 +25,7 @@ const me = await (await fetch(`${base}/api/me`)).json()
 const cfg = await (await fetch(`${base}/api/themes/rakugaki/config`)).json()
 console.log(`真 hub 的 /api/me: ${JSON.stringify(me)}\n真 hub 的主题设置: ${JSON.stringify(cfg)}`)
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9993', '--remote-allow-origins=*', '--no-first-run',
   '--disable-gpu', '--hide-scrollbars', '--window-size=1280,900', '--user-data-dir=' + (process.env.TEMP || '/tmp') + '/realhub-' + Date.now(), 'about:blank'], { stdio: 'ignore' })
 let ws = null

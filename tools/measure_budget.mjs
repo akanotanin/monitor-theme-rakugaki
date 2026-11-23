@@ -1,7 +1,7 @@
 // 量一下价值版那两格数字在各机位到底差多少（本机 dist + 真 hub 数据，复现站长那组数字）。
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const UPSTREAM = process.argv[2]
 const PORT = 5612
@@ -9,7 +9,7 @@ const server = spawn('node', ['tools/serve.mjs', String(PORT), '{"listTop":"budg
 server.stdout.on('data', () => {})
 await sleep(1200)
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9995', '--remote-allow-origins=*', '--no-first-run',
   '--disable-gpu', '--hide-scrollbars', `--window-size=1440,1000`, `--user-data-dir=${process.env.TEMP || '.'}/meas-${Date.now()}`, 'about:blank'], { stdio: 'ignore' })
 let ws = null

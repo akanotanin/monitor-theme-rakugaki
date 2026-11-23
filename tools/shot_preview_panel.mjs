@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const OUT = process.argv[2] || 'preview.png'
 const NODES_PATH = 'tools/globe-nodes-fixture.json'
@@ -75,7 +76,7 @@ const server = createServer((req, res) => {
 })
 await new Promise((r) => server.listen(PORT, r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbg = 9983 + Math.floor(Math.random() * 7)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', `--user-data-dir=${(process.env.TEMP || '/tmp')}/shotpreview-${Date.now()}`, 'about:blank'], { stdio: 'ignore' })

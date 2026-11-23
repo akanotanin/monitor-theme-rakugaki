@@ -15,6 +15,7 @@ import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const OUT = process.argv[2] || 'shots/dark-surface'
 const ELEV = process.argv[3] || ''
@@ -55,7 +56,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 console.log(`桩服务在 ${PORT}（tools/globe-nodes-fixture.json）`)
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbg = 9760 + Math.floor(Math.random() * 20)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, '--remote-allow-origins=*', '--no-first-run',
   '--disable-gpu', '--hide-scrollbars', '--window-size=1440,900', `--user-data-dir=${join(tmpdir(), 'rksurf-' + dbg)}`, 'about:blank'], { stdio: 'ignore' })

@@ -24,6 +24,10 @@ import { extname, join, normalize } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+// DIST_DIR 指到别的构建（反向自测）时不能要求那份构建比源码新 —— 只盯默认的 ./dist。
+if (!process.env.DIST_DIR) assertDistFresh()
 
 const PORT = Number(process.argv[2] || 5318)
 const CDP_PORT = PORT + 4000
@@ -126,11 +130,7 @@ await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
 /* ------------------------------------------------------------------ 浏览器 */
 
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*',
   '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars',

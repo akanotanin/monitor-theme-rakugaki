@@ -23,6 +23,9 @@ import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = 5523
 const CDP_PORT = PORT + 4000
@@ -80,7 +83,7 @@ const server = createServer((req, res) => {
 })
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', '--no-proxy-server', `--user-data-dir=${join(tmpdir(), `offlinelast${CDP_PORT}`)}`, '--no-sandbox', 'about:blank'], { stdio: 'ignore' })
 let wsUrl = null

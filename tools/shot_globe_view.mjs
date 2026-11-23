@@ -6,6 +6,7 @@ import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'no
 import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const OUT = process.argv[2] || 'shots/globe-colors/view.png'
 const LON = Number(process.argv[3] ?? 200)
@@ -40,7 +41,7 @@ const server = createServer((req, res) => {
 })
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbg = 9996
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', '--window-size=1280,900', '--user-data-dir=' + (process.env.TEMP || '/tmp') + '/globeview-' + Date.now(), 'about:blank'], { stdio: 'ignore' })

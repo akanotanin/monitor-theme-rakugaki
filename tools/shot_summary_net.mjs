@@ -26,6 +26,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { extname, join, normalize } from 'node:path'
 import { spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const PREFIX = process.argv[2] || 'shots/netfit'
 const PORT = Number(process.argv[3] || 5341)
@@ -89,7 +90,7 @@ const server = createServer((req, res) => {
 })
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*',
   '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars',

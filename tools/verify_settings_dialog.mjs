@@ -19,8 +19,11 @@
 // 用法: node tools/verify_settings_dialog.mjs <theme.json> <截图前缀> [baseUrl=http://127.0.0.1:28081]
 //   baseUrl 通常是 ssh -L 隧道到测试 hub 的本地端口。
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises';
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const MANIFEST = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const PREFIX = process.argv[3] || 'shots/settings-dialog';
@@ -39,8 +42,7 @@ const BASE = (process.argv[4] || 'http://127.0.0.1:28081').replace(/\/$/, '');
 // 下面那批排版断言因此走**没有导航**的那一支：一次挂载全部字段。
 const WANTED = ['卡片形态', '列表页顶部', '备注显示位置', '显示的延迟线路', '节点地球', '主题模式'];
 const PORT = 9780 + Math.floor(Math.random() * 20);
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe']
-  .find((p) => existsSync(p)) || 'chrome';
+const CHROME = findChrome();
 
 const proc = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, '--remote-allow-origins=*',
   '--no-first-run', '--disable-gpu', '--hide-scrollbars', '--window-size=1440,900',

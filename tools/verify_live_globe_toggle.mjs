@@ -13,8 +13,9 @@
 // ② 站点在 Cloudflare 后面时本机 headless Chrome 走系统代理（本机代理策略已把 Chrome 钉在
 // 127.0.0.1:2080），不要另加 --no-proxy-server。
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const SITE = (process.argv[2] || '').replace(/\/$/, '')
 const OUT = process.argv[3] || 'shots'
@@ -23,7 +24,7 @@ if (!SITE) {
   console.error('用法：node tools/verify_live_globe_toggle.mjs <站点地址> [截图输出目录]')
   process.exit(2)
 }
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const dbg = 9950 + Math.floor(Math.random() * 40)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, '--remote-allow-origins=*', '--no-first-run',
   '--disable-gpu', '--hide-scrollbars', '--window-size=1440,900',

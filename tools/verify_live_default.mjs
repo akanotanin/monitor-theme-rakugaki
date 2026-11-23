@@ -12,15 +12,15 @@
 // 用法：node tools/verify_live_default.mjs <站点URL> [期望的形态值，默认 plain]
 // 站点在 CDN 后面时浏览器要走本机代理（本机策略决定），所以脚本不传 --proxy-server，随策略走。
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const SITE = (process.argv[2] || '').replace(/\/$/, '')
 if (!SITE) { console.error('用法：node tools/verify_live_default.mjs <站点URL> [期望的形态值]'); process.exit(2) }
 const WANT = process.argv[3] || 'latency'
 const ROW_STYLES = ['plain', 'latency'] // 底部「一行两段」的那两档；classic / detailed / compact 都不是
 const PING_STYLES = ['latency', 'detailed'] // 卡面自带三网延迟、每张卡各取一条 ping 请求的两档
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const PORT = 9800 + Math.floor(Math.random() * 90)
 
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, '--remote-allow-origins=*',

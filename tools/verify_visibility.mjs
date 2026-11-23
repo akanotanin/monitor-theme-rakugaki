@@ -18,6 +18,9 @@ import { createHash } from 'node:crypto'
 import { extname, join, normalize } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = 5398
 const CDP_PORT = PORT + 4000
@@ -108,7 +111,7 @@ const stats = async () => (await (await fetch(`http://127.0.0.1:${PORT}/__stats`
 
 /* ------------------------------------------------------------------ 浏览器 */
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', '--no-proxy-server', `--user-data-dir=${join(tmpdir(), `vischeck${CDP_PORT}`)}`, '--no-sandbox', 'about:blank'], { stdio: 'ignore' })
 let wsUrl = null

@@ -9,6 +9,9 @@ import { createServer } from 'node:http'
 import { join, extname, normalize } from 'node:path'
 import { camera, VIEW, regionRows } from '../src/lib/globe.ts'
 import { WORLD_OUTLINES } from '../src/lib/world.ts'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = 5461
 const OUT = 'shots/globe-spin'
@@ -91,7 +94,7 @@ const sampleDisk = (lon0, lat0) => {
   return pts
 }
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p))
+const CHROME = findChrome()
 const dbgPort = 9920 + Math.floor(Math.random() * 9)
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbgPort}`, '--remote-allow-origins=*', '--no-first-run',
   '--disable-gpu', '--hide-scrollbars', '--window-size=1440,900',

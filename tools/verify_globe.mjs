@@ -22,6 +22,9 @@ import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { linkDivisor } from '../src/lib/globe.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const OUT = process.argv[2] || 'shots/globe'
 const PORT = 5201
@@ -97,11 +100,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 mkdirSync(OUT, { recursive: true })
 
-const CHROME = [
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  '/usr/bin/google-chrome',
-].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 
 let chrome, dbgPort, wsUrl = null
 for (let attempt = 0; attempt < 2 && !wsUrl; attempt++) {
@@ -429,7 +428,7 @@ const pin = await js(`(() => {
   return JSON.stringify({ id: hit.getAttribute('data-node'), x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), w: Math.round(r.width), h: Math.round(r.height) });
 })()`)
 const p = JSON.parse(pin)
-check('命中圆有手指点得中的尺寸（半径 9 → 屏幕上更大）', p.w >= 12 && p.h >= 12, `${p.w}×${p.h}`)
+check('命中圆有手指点得中的尺寸（≥24px，WCAG 2.5.8；2026-11-23 前是 r=9 固定值，手机上只有 13.3px）', p.w >= 24 && p.h >= 24, `${p.w}×${p.h}`)
 // 点之前先记下那个像素上最顶上是谁：`hit` 才对（地球本身、标签、引线都是 pointer-events: none，
 // 只有命中圆吃指针）。点不动机器时，这条 INFO 是第一现场。
 console.log(`  INFO  该像素上是 ${await js(`(() => { const el = document.elementFromPoint(${p.x}, ${p.y}); return el ? (el.getAttribute('class') || el.tagName) : 'none' })()`)}`)
@@ -545,8 +544,10 @@ check('（前置）能把焦点放到那枚针上', firstId != null, `data-node=
 const ring = await js(`(() => { const h = document.querySelector('.globe-atlas svg .hit'); const cs = getComputedStyle(h); return JSON.stringify({ w: cs.strokeWidth, s: cs.stroke }) })()`)
 const ringOk = (() => { try { const r = JSON.parse(ring); return r.w === '1.5px' && r.s !== 'none' } catch { return false } })()
 check('★ 焦点环画出来了（命中圆描边切到 1.5px 的前景色）', ringOk, ring)
-await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
-await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+// ★2026-11-23：CDP 合成 Enter 必须带 text:'\r'，否则浏览器不把它当「激活键」——
+//   同一个 <button> / role=button 的默认动作在真键盘下会发生、在 CDP 下不会。
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: `\r`, unmodifiedText: `\r`, windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
 await sleep(700)
 const kbdOpen = JSON.parse(await js(READ))
 check('★ Enter 打开那枚针对应的机器（URL = /node/<data-node>）',
@@ -554,6 +555,25 @@ check('★ Enter 打开那枚针对应的机器（URL = /node/<data-node>）',
 check('  详情页真的画出来了（不是整页空白）', /CPU|内存/.test(String(await js('document.body.innerText')).slice(0, 200)))
 await js(`(() => { history.pushState({}, '', '/'); location.reload(); return true })()`)
 await sleep(900)
+
+// ★2026-11-23：辅助技术 / 脚本的「激活」走的是**合成 click**（`detail === 0`），
+//   它不经过容器的 pointerdown/pointerup 状态机。原来圆上没有 onClick，于是
+//   VoiceOver / NVDA 的「激活」和 `el.click()` 什么都不做，而元素对外宣称 role=button。
+{
+  const before = JSON.parse(await js(READ)).url
+  const targetId = await js(`(() => {
+    const h = document.querySelector('.globe-atlas svg .hit')
+    if (!h) return null
+    h.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 }))
+    return h.getAttribute('data-node')
+  })()`)
+  await sleep(800)
+  const after = JSON.parse(await js(READ))
+  check('★ 合成 click（AT 的「激活」）也能打开那枚针（detail=0 那条路径）',
+    targetId != null && after.url === `/node/${targetId}`, `${before} → ${after.url}（针 data-node=${targetId}）`)
+  await js(`(() => { history.pushState({}, '', '/'); location.reload(); return true })()`)
+  await sleep(1000)
+}
 
 // 从标签上按下再拖：和从针上拖一样 —— 转地球、不误开（标签不能把手势吃掉）。
 const L2 = await waitLabel()

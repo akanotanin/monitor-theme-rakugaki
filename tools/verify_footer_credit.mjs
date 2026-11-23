@@ -19,6 +19,9 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { assertDistFresh } from "./_dist-fresh.mjs"
+import { findChrome } from "./_chrome.mjs"
+assertDistFresh()
 
 const PORT = 5230
 const BASE = (process.argv[2] || `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
@@ -69,7 +72,7 @@ if (!REAL) {
   console.log(`直接打真站: ${BASE}（本机不伺服 dist）`)
 }
 
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 let chrome, dbgPort, wsUrl = null
 for (let attempt = 0; attempt < 2 && !wsUrl; attempt++) {
   dbgPort = 9940 + Math.floor(Math.random() * 60)

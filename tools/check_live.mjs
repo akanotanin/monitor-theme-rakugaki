@@ -9,13 +9,13 @@
 // 才起跑（不是又回到和首屏抢链路）、文件哈希对得上、列表与详情都画得出来、控制台无异常。
 // 站点在 CDN 后面时浏览器要走本机代理（与手工 curl 的 --noproxy 相对），这是本机策略决定的。
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { findChrome } from "./_chrome.mjs"
 
 const SITE = (process.argv[2] || '').replace(/\/$/, '')
 if (!SITE) { console.error('用法：node tools/check_live.mjs <站点URL> [期望的 chunk 文件名]'); process.exit(2) }
 const WANT_CHUNK = process.argv[3] || ''
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
+const CHROME = findChrome()
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9998', '--remote-allow-origins=*', '--no-first-run', '--disable-gpu',
   '--hide-scrollbars', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
   '--window-size=1280,900', '--user-data-dir=' + (process.env.TEMP || '/tmp') + '/live-' + Date.now(), 'about:blank'], { stdio: 'ignore' })
