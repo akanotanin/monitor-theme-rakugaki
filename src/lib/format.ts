@@ -118,8 +118,17 @@ export function daysUntil(date?: string | null): number | null {
   if (!date) return null
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date)
   if (!m) return null
-  const target = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  const target = Date.UTC(y, mo - 1, d)
   if (Number.isNaN(target)) return null
+  // ★2026-11-23：`Date.UTC` 对越界月/日只**进位**不拒绝 —— `2026-13-45` 会滚成
+  //   2027-02-14、`2026-02-31` 滚成 2026-03-03，于是这里回读比对，形状不对就当没有日期
+  //   （老 hub 没有 expires_in 时才会走到这条路，一个坏掉的 expires_at 原来会显示成一个
+  //   看似正常的到期天数）。
+  const back = new Date(target)
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null
   const day = 86_400_000
   const beijing = 8 * 3_600_000
   const index = (ms: number) => Math.floor((ms + beijing) / day)

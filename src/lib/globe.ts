@@ -610,10 +610,31 @@ export function trimLabel(text: string, max: number, measure?: LabelMeasure): st
   return `${out.trimEnd()}…`
 }
 
-/** 节点名/分组里认出的城市线索。 */
-export function cityHint(node: Pick<Node, "name" | "group">): { ll: [number, number]; name: string } | null {
+/**
+ * 节点名/分组里认出的城市线索。
+ *
+ * ★2026-11-23 补了两道校验（都是真机量出来的误判）：
+ *   ① **三字码是弱线索**：`SEA`/`CAN`/`SG` 既是机场码、也是站点最常见的分组缩写，
+ *      `country=SG, group=SEA, name=sg-01` 原来会被认成 Seattle（落点 -122.3,47.6）、
+ *      `country=CA, group=CAN` 会被认成广州。现在只有「命中那段是纯字母码」时才多验一道：
+ *      节点的国家码不在 `hint.cc` 里就丢弃这条线索，继续找下一条。
+ *   ② **有国家码才做这道校验**：`country` 为空时无从校验，保持原来的行为（线索照用）。
+ *
+ * 中文写法与城市全名是强线索，不校验 —— 站长把「东京」写进分组就是要它落东京，
+ * 哪怕 hub 那边国家填错了。
+ */
+export function cityHint(node: Pick<Node, "name" | "group" | "country">): { ll: [number, number]; name: string; cc: string[] } | null {
   const text = [node.name, node.group].filter(Boolean).join(" ")
-  for (const hint of CITY_HINTS) if (hint.match.test(text)) return { ll: hint.ll, name: hint.name }
+  const code = (node.country || "").trim().toUpperCase()
+  for (const hint of CITY_HINTS) {
+    const m = hint.match.exec(text)
+    if (!m) continue
+    // 命中的那一段是不是**纯字母码**（强线索 = 中文或城市全名，命中段里必然带非 ASCII 或空格）。
+    // ★用 `A-Za-z` 不是 `A-Z`：正则带 /i，站长的分组名常是小写（`sea`/`can`），只认大写会
+    //   让这些走「强线索」那条免检通道，等于没修。
+    if (code && /^[A-Za-z]{2,3}$/.test(m[0]) && !hint.cc.includes(code)) continue
+    return { ll: hint.ll, name: hint.name, cc: hint.cc }
+  }
   return null
 }
 
@@ -649,14 +670,19 @@ export type Region = {
  */
 export function regionOf(node: Node): Region | null {
   const code = (node.country || "").trim().toUpperCase()
-  if (!code) return null
   const hint = cityHint(node)
+  // ★2026-11-23：**城市线索能给位置时，缺国家码也放行**。原来 `if (!code) return null` 在
+  //   线索之前就把这台丢掉了 —— hub 地理库没认出来（内网 IP、表缺项）时 country 是空串，
+  //   可名字/分组里明明写着「Tokyo-01」，那台却既不上地球也不进地区列表。现在认得出城市就用
+  //   城市名当地区名、用线索里的国家码（`hint.cc[0]`）当 key 的前缀，两面都还在。
+  if (!code && !hint) return null
   const base = hint?.ll ?? COUNTRY_LL[code]
   if (!base) return null
   const city = hint?.name ?? COUNTRY_CITY_FALLBACK[code] ?? ""
   // 第三层：认不出城市写国家名（不再裸写两字码）；表外才退回码本身。
   const label = city || COUNTRY_NAME[code] || code
-  return { key: city ? `${code} · ${city}` : code, code, city, label, base: [base[0], base[1]] }
+  const keyCode = code || hint?.cc[0] || ""
+  return { key: city ? `${keyCode} · ${city}` : keyCode, code: keyCode, city, label, base: [base[0], base[1]] }
 }
 
 export type GlobeNode = {

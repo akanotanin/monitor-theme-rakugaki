@@ -67,25 +67,27 @@ export function CardStyleMenu({ value, siteDefault, onPick }: {
   // 浮层现在挂在 header 上（不在 box 里）—— 判「浮层外」要多看它自己一眼，否则按下选项
   // 那一下会先把浮层卸掉、click 就丢了。
   // 别写 `e.target as Node` —— 本仓库的 `Node` 是节点类型（@/lib/api），会跟 DOM 的撞名。
+  //
+  // ★2026-11-23 修两处键盘硬伤，改之前先读：
+  //   ① **首次打开焦点必须进菜单**。原来在这里同步做「落到当前那一档」，可第一次打开时
+  //      portal 还没挂（`spot` 由上面的 useLayoutEffect 现算，首帧是 null）、`items()` 是空的，
+  //      `start?.focus()` 静默落空 —— 于是「Enter 打开 → ↓/↑」第一次毫无反应，得关掉再开一次。
+  //      现在把初始聚焦挪到 `open && spot` 都就绪的那个 layout effect 里（见下面），每次打开只做一次。
+  //   ② **Esc 只能有一个处理者**。原来注册了两个 document keydown：`onKey` 只 setOpen(false)，
+  //      `onNav` 还负责把焦点还给触发按钮。前者先注册先跑，菜单当场卸载、effect 清理也把
+  //      onNav 摘掉，焦点于是掉到 body（真机连开两轮实测 active=BODY）。合并成一个：
+  //      先收菜单、再把焦点还给按钮。
   useEffect(() => {
     if (!open) return
     const onDown = (e: PointerEvent) => {
       const el = e.target
       if (!(el instanceof HTMLElement) || !(box.current?.contains(el) || menu.current?.contains(el))) setOpen(false)
     }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
-    }
-    document.addEventListener("pointerdown", onDown)
-    document.addEventListener("keydown", onKey)
-    // ★2026-11-06：role="menu" 得有菜单该有的键盘行为 —— 打开时焦点落到当前那一档，
-    // ↑↓ / Home / End 在选项间移动，Esc 收起来并把焦点还给触发按钮。
     const items = () => Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("[data-style-option]") ?? [])
-    const start = items().find((el) => el.getAttribute("aria-checked") === "true") ?? items()[0]
-    start?.focus()
-    const onNav = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false)
+        // 菜单是 portal 出来的，触发按钮一直在原地，这一句不会因为卸载而落空。
         box.current?.querySelector<HTMLElement>(".card-style-toggle")?.focus()
         return
       }
@@ -98,13 +100,29 @@ export function CardStyleMenu({ value, siteDefault, onPick }: {
         : (at + (e.key === "ArrowDown" ? 1 : -1) + list.length) % list.length
       list[to]?.focus()
     }
-    document.addEventListener("keydown", onNav)
+    document.addEventListener("pointerdown", onDown)
+    document.addEventListener("keydown", onKey)
     return () => {
       document.removeEventListener("pointerdown", onDown)
       document.removeEventListener("keydown", onKey)
-      document.removeEventListener("keydown", onNav)
     }
   }, [open])
+
+  // 打开后把焦点落到「当前生效的那一档」（role="menu" 该有的行为）。
+  // ★必须等 `spot` 就绪：首帧 portal 还没挂，`menu.current` 是 null。见上面 ①。
+  const focusedOnce = useRef(false)
+  useLayoutEffect(() => {
+    if (!open) {
+      focusedOnce.current = false
+      return
+    }
+    if (focusedOnce.current || !spot) return
+    const list = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("[data-style-option]") ?? [])
+    const start = list.find((el) => el.getAttribute("aria-checked") === "true") ?? list[0]
+    if (!start) return
+    focusedOnce.current = true
+    start.focus()
+  }, [open, spot])
 
   return (
     <span className="relative inline-flex" ref={box}>

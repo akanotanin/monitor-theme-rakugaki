@@ -84,18 +84,43 @@ function Block({ icon: Icon, title, hint, detail, wide = false, children }: {
     return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey) }
   }, [open])
   // 量可用空间并压上限。用 layout effect：改高度发生在同一帧里，看不见浮层先长出来再被压。
+  // ★2026-11-23 改了三处，都是「浮层开着时的无谓回流」：
+  //   ① `detail` 从依赖里拿掉。调用处写的是 `detail={<TrafficDetail nodes={nodes} />}`，
+  //      每次渲染都是新对象 —— WS 每 2 秒推一次，浮层开着的整段时间里这个 effect 就每 2 秒
+  //      重跑一遍：`maxHeight='none'` → 读 `offsetHeight` → 写回 px，两次强制同步布局。
+  //   ② 内容真变了（今日流量的峰值逐台回来会长高）用 **MutationObserver** 兜：
+  //      不可以观察浮层自己或其中的 `.detail-scroll` —— 我们写 maxHeight 会改变后者的高度，
+  //      ResizeObserver 会被自己触发成死循环；MutationObserver 只看 DOM 结构/文本变化，
+  //      改 style 不触发，天然不自激。
+  //   ③ 窗口变高变矮也要重量（原来只在打开那一刻量一次，把窗口拉高后浮层仍卡在旧上限）。
   useLayoutEffect(() => {
     if (!open) return
     const pop = popRef.current
     const host = ref.current
     if (!pop || !host) return
-    pop.style.maxHeight = "none"                   // 先按自然高度量（CSS 那道上限先让开）
-    const natural = pop.offsetHeight
-    const box = host.getBoundingClientRect()
-    const room = Math.round(window.innerHeight - box.bottom - 8)   // 留 8px 别贴着屏幕边
-    const want = Math.min(natural, 384, Math.round(window.innerHeight * 0.6))
-    pop.style.maxHeight = `${Math.max(120, Math.min(want, room))}px`
-  }, [open, detail])
+    const fit = () => {
+      pop.style.maxHeight = "none"                   // 先按自然高度量（CSS 那道上限先让开）
+      const natural = pop.offsetHeight
+      const box = host.getBoundingClientRect()
+      const room = Math.round(window.innerHeight - box.bottom - 8)   // 留 8px 别贴着屏幕边
+      const want = Math.min(natural, 384, Math.round(window.innerHeight * 0.6))
+      pop.style.maxHeight = `${Math.max(120, Math.min(want, room))}px`
+    }
+    fit()
+    let pending = 0
+    const schedule = () => {
+      if (pending) return
+      pending = requestAnimationFrame(() => { pending = 0; fit() })
+    }
+    const mo = typeof MutationObserver === "function" ? new MutationObserver(schedule) : null
+    mo?.observe(pop, { childList: true, subtree: true, characterData: true })
+    window.addEventListener("resize", schedule)
+    return () => {
+      if (pending) cancelAnimationFrame(pending)
+      mo?.disconnect()
+      window.removeEventListener("resize", schedule)
+    }
+  }, [open])
   return (
     <div
       ref={ref}
@@ -116,7 +141,13 @@ function Block({ icon: Icon, title, hint, detail, wide = false, children }: {
       onClick={detail ? () => setOpen(true) : undefined}
       // ★2026-11-06：这块是 role="button" 却没有键盘激活路径 —— Esc 关掉之后焦点还在块上，
       //   按 Enter / 空格毫无反应（只能 Tab 走再 Tab 回来靠 onFocus 重开）。
+      //
+      // ★2026-11-23 修：**只在块自己拿到焦点时才接管**。浮层里那节 `.detail-scroll` 是
+      //   `tabIndex=0` 的可聚焦后代，键盘事件会从这里冒泡上来 —— 原来无条件处理，于是在
+      //   滚动区里按空格会把浮层关掉（实测 defaultPrevented=true、浮层当场消失、焦点掉到
+      //   body），而且那一下 preventDefault 还挡掉了空格在可滚动区域里本该有的翻页滚动。
       onKeyDown={detail ? (e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
           setOpen((was) => !was)

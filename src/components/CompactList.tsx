@@ -214,7 +214,10 @@ function Row({ node, span, open, onToggle, onOpenDetail, onWarm, historyDays, re
               type="button"
               className="font-display min-w-0 max-w-full truncate rounded-sm text-left text-sm font-semibold tracking-[-.01em] underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               aria-expanded={open}
-              aria-controls={`compact-detail-${node.id}`}
+              /* ★2026-11-23：只在展开时给 aria-controls —— 收起态那一行 `<tr id=...>`
+                 根本没渲染（Expanded 组件不挂），指向一个不存在的 id 是悬空引用
+                 （axe 的 aria-valid-attr-value 会报）。 */
+              aria-controls={open ? `compact-detail-${node.id}` : undefined}
               onClick={(e) => { e.stopPropagation(); onToggle() }}
             >
               <TextHighlight text={node.name} terms={terms} />

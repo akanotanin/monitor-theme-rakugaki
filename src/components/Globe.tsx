@@ -65,16 +65,16 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
   /** 指针已经落到某台机器上：提前把详情那块 chunk 取回来（见 App 的 warmDetail）。 */
   onWarm: () => void
 }) {
-  const narrow = useNarrow()
   /**
    * ★ 窄屏（≤720px）**不再降档**。2026-10-07 站长看过手机上的 low 档之后说「地球太简陋了」——
    * 那一档只有 104 个点的粗岸线（一格 60° 的网、不画扫掠、不画引线），确实就是一张草图。
    * 现在跟桌面同档：detailed 岸线（79 环 / 1483 点，但每帧只投影**正面那一半**，约 500 点）、
    * 30° 经纬网、1 条扫掠、引线。代价是手机上每帧多做约 4 倍的点与路径字符串 ——
    * **真机若发烫或掉帧，回退就是下面那个开关改回 `true`（一行）**，别犹豫。
+   * ★2026-11-23：`useNarrow()` 已删（它只喂这一行、开关恒为 false），回退时把它加回来。
    */
   const NARROW_LOW_TIER = false
-  const quality: Quality = narrow && NARROW_LOW_TIER ? "low" : "medium"
+  const quality: Quality = NARROW_LOW_TIER ? "low" : "medium"
   const profile = useMemo(() => globeProfile(quality), [quality])
   const prep = useMemo(
     () => prepareRings(profile.land === "coarse" ? COARSE_WORLD_OUTLINES : WORLD_OUTLINES),
@@ -231,7 +231,7 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
     return probe === null ? undefined : (text: string) => measureLabel(text) as number
   }, [])
   const canvas = useMemo(() => {
-    const plain = { pad: 0, room: Number.POSITIVE_INFINITY, viewBox: `0 0 ${VIEW.w} ${VIEW.h}` }
+    const plain = { pad: 0, room: Number.POSITIVE_INFINITY, viewBox: `0 0 ${VIEW.w} ${VIEW.h}`, hitR: 9 }
     if (!box || !points.length) return plain
     const ink = Math.max(0, ...points.map((p) => (p.bare
       ? inkWidthWith(measured, p.display)
@@ -243,9 +243,22 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
     // 460 的画布撑到 532 已经让圆盘小 13%，再多就不是"复刻"那个地球了。
     // （123 = 两摞标签各自距画布边缘的距离，与 globe.ts 的 stack 同一组数。）
     const pad = Math.max(0, Math.min(36, ink + 6 - (123 + room)))
+    /**
+     * 命中圆的半径（用户单位）。★2026-11-23：这枚 `r=9` 是 SVG 用户单位，跟着画布一起缩 ——
+     * 390 宽的手机上画布缩放 0.737，屏幕直径只有 **13.3px**（1440 上是 21px）。WCAG 2.5.8
+     * 的硬线是 24×24，这两种尺寸都不够（手机上手指根本点不中）。
+     *
+     * 算法：先算「屏幕直径」目标，再除回用户单位。目标是 32px（约等于 iOS 44pt 的可点区、
+     * 比 WCAG 的 24px 留了一倍余量），用户单位 = 16 / 缩放（半径 = 直径/2）。
+     * 上下夹：≥9（不动桌面原有的观感下限）、≤22（密集区里针与针不互相盖住）。
+     * 放大的只有那枚透明圆，针（r=2.1）、引线、标签的视觉一个像素都不动。
+     */
+    const fit = Math.min(box.w / (VIEW.w + pad * 2), box.h / VIEW.h)
+    const hitR = fit > 0 ? Math.min(22, Math.max(9, 16 / fit)) : 9
     return {
       pad,
       room,
+      hitR,
       viewBox: pad ? `${-pad.toFixed(1)} 0 ${(VIEW.w + pad * 2).toFixed(1)} ${VIEW.h}` : `0 0 ${VIEW.w} ${VIEW.h}`,
     }
   }, [box, points, measured])
@@ -320,7 +333,7 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
             <path key={i} className="globe-link" d={arc.d} />
           ))}
           {placed.map((p) => (
-            <Pin key={p.key} p={p} onOpen={onOpen} onWarm={onWarm} />
+            <Pin key={p.key} p={p} hitR={canvas.hitR} onOpen={onOpen} onWarm={onWarm} />
           ))}
           {marker && (
             <g className="globe-selected">
@@ -387,7 +400,7 @@ export function Globe({ nodes, dark, region, onRegion, onOpen, onWarm }: {
  * （onWarm，与卡片「摸到就预热」同一套）。焦点圈画在 index.css 的 `.hit:focus-visible`。
  * 标签文字与台数角标标 aria-hidden：它们与命中圆的 aria-label 是同一份信息，别播两遍。
  */
-function Pin({ p, onOpen, onWarm }: { p: Placed; onOpen: (id: number) => void; onWarm: () => void }) {
+function Pin({ p, hitR, onOpen, onWarm }: { p: Placed; hitR: number; onOpen: (id: number) => void; onWarm: () => void }) {
   const cx = p.px.toFixed(1)
   const cy = p.py.toFixed(1)
   return (
@@ -418,7 +431,7 @@ function Pin({ p, onOpen, onWarm }: { p: Placed; onOpen: (id: number) => void; o
         className="hit"
         cx={cx}
         cy={cy}
-        r={9}
+        r={hitR}
         fill="transparent"
         data-node={p.id}
         data-index={p.index}
@@ -430,6 +443,17 @@ function Pin({ p, onOpen, onWarm }: { p: Placed; onOpen: (id: number) => void; o
         aria-label={p.count > 1 ? `${p.region.label}：${p.count} 台，打开其中第一台` : `打开 ${p.name}`}
         onFocus={onWarm}
         onPointerOver={onWarm}
+        /* ★2026-11-23：辅助技术与脚本的「激活」走的是合成 click（`detail` 恒为 0），
+           而指针那条路径全在容器的 pointerdown/pointerup 状态机里 —— 原来圆上没有 onClick，
+           于是 VoiceOver / NVDA 的「激活」以及 `el.click()` 什么都不做，而它对外宣称是 button。
+           判 `detail === 0` 只认合成路径：真指针的 click 带 detail≥1（且已由 endDrag 打开过），
+           不会重复压历史。 */
+        onClick={(e) => {
+          if (e.detail !== 0) return
+          e.stopPropagation()
+          onWarm()
+          onOpen(p.id)
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault()
@@ -458,25 +482,31 @@ function RegionFlag({ code }: { code: string }) {
   )
 }
 
-const NARROW = matchMedia("(max-width: 720px)")
 const REDUCE = matchMedia("(prefers-reduced-motion: reduce)")
 
-function subscribe(query: MediaQueryList, notify: () => void) {
+/** 订阅一个 MediaQueryList；换成模块级常量 —— 内联写进 `useSyncExternalStore` 时它每次渲染
+ *  都是新函数，React 会退订重订一遍（2026-11-23 实测：1440×900 列表页 3 秒内 add/remove
+ *  各 +93 次，而地球自转的 rAF 同期只跑了 181 帧）。 */
+const subscribeTo = (query: MediaQueryList) => (notify: () => void) => {
   query.addEventListener("change", notify)
   return () => query.removeEventListener("change", notify)
 }
+const subscribeReduce = subscribeTo(REDUCE)
 
 /**
- * 窄屏（≤720px）。★ 现在这个宽度**不再降档**（2026-10-07 站长看过手机上 low 档的效果、
- * 说「地球太简陋了」之后，组件顶部的 `NARROW_LOW_TIER` 已经改成 false）——这个钩子现在
- * 只用来在 quality 那一行表达「窄屏本来可以降档」：开关保持可读、回退是一行改回 true，
- * 免得后人以为那里漏了判断。上游在这个宽度上干脆不画地球；本主题照画，只是不为省电降档。
+ * 「减弱动态效果」。
+ *
+ * ★2026-11-23：同源的 `useNarrow()` 已删 —— 它唯一的消费点是组件顶部的
+ * `narrow && NARROW_LOW_TIER`，而 `NARROW_LOW_TIER` 自 2026-10-07 站长说「地球太简陋了」
+ * 之后就是 `false`，那条分支恒不成立。留着等于每次渲染白跑一次媒体查询订阅。
  */
-function useNarrow(): boolean {
-  return useSyncExternalStore((notify) => subscribe(NARROW, notify), () => NARROW.matches)
+function useReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeReduce, () => REDUCE.matches)
 }
 
-/** 系统开了「减弱动态效果」就不自转（跟着系统设的改变，不是只在挂载时读一次）。 */
-function useReducedMotion(): boolean {
-  return useSyncExternalStore((notify) => subscribe(REDUCE, notify), () => REDUCE.matches)
-}
+/**
+ * ★2026-11-23：上面那个 `useNarrow()` 已删。它唯一的消费点是 quality 那一行里恒为 false 的
+ *   `narrow && NARROW_LOW_TIER`（NARROW_LOW_TIER 自 2026-10-07 起就是 false），于是整条
+ *   媒体查询订阅没有任何产物，只剩「每次渲染退订重订一遍」的开销。`NARROW_LOW_TIER` 这个
+ *   开关与注释保留 —— 真机上要回退成 low 档时把它改回 `true`，再把 `useNarrow` 加回来。
+ */

@@ -33,3 +33,41 @@ jobs:
       - run: npm test
       - run: npm run check
       - run: npm run build
+
+  # 真机护栏：37 个 tools/verify_*.mjs 伺服 dist/ 跑无头 Chrome。★2026-11-23 加：
+  # 这些脚本原来**只在本机手动跑**，CI 里一个都没执行过（`grep -rn verify_ .github/` 为空），
+  # 于是「本地全绿」既有「忘了 build 的旧产物」也有「CI 根本没验」两层虚。
+  # ubuntu-latest 自带 chromium（verify 脚本的 CHROME 探测链里就有 /usr/bin/chromium）。
+  # 先 npm run build 保证 dist 新鲜（护栏自己也会在 dist 落后时 exit 1）。
+  # 只跑不依赖真 hub 的那一批：verify_detail_preload / verify_live_* 要连上游，留给本机。
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: 确认有可用的 Chrome/Chromium
+        # ubuntu-latest 镜像自带 google-chrome（`/usr/bin/google-chrome`），tools/_chrome.mjs
+        # 的探测链认得它；这里只是把结论打出来，找不到就让整步红掉（比后面一堆脚本超时好查）。
+        run: |
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::runner 上没有 chrome/chromium，护栏无法运行"
+            exit 1
+          fi
+          echo "CHROME=$CHROME" >> "$GITHUB_ENV"
+          "$CHROME" --version
+      - name: 核心版式护栏
+        run: |
+          for f in verify_card_form verify_card_styles verify_public_remark verify_touch_targets \
+                   verify_mobile_targets verify_keyboard_and_motion verify_region_coverage verify_tokens_and_a11y \
+                   verify_many_nodes verify_appearance verify_detail_charts verify_offline_last \
+                   verify_summary verify_search verify_card_style_menu verify_globe \
+                   verify_globe_scale verify_globe_colors; do
+            echo "=== $f"
+            node "tools/$f.mjs"
+          done

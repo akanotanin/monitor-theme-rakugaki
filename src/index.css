@@ -38,6 +38,12 @@
 @font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+/* 手写小注（`.sk-hand`）的拉丁那一层。★2026-11-23：这枚 woff2 一直在 `public/fonts/` 里随包发,
+   但**从来没被 @font-face 声明过** —— `--font-hand` 的首位写着 "Caveat"，浏览器找不到这个族，
+   拉丁字就一路落到系统 `cursive`（canvas 测宽：`Caveat` 306.31 ≡ `cursive` 306.31），
+   跨端不一致，「字体自带、离线可用」也漏了一款。unicode-range 只留拉丁与标点：汉字仍由
+   下一层的 Rakugaki Hand 子集接（那才是随包的 CJK 手写体）。 */
+@font-face { font-family: "Caveat"; src: url("/fonts/caveat-latin-500-normal.woff2") format("woff2"); font-weight: 400 500; font-style: normal; font-display: swap; unicode-range: U+0000-00B6, U+00B8-024F, U+02B0-02FF, U+2000-206F, U+2190-21FF, U+2248, U+2264-2265; }
 
 :root {
   /* 原生控件（滚动条、下拉、日期选择器）跟着这一档走：不声明就会一直是亮色的。
@@ -51,7 +57,6 @@
   --ink: #141413;
   --ink-2: #3d3d3a;
   --ink-3: #5e5d59;
-  --ink-4: #87867f;
   /* 墨线：真正的描边色。--line / --line-strong 是它的淡版本（虚线、分隔用）。 */
   --stroke: #141413;
   --line: rgba(20, 20, 19, .14);
@@ -136,7 +141,12 @@
   --destructive: #b84a32;
   --border: var(--line);
   --input: var(--line-strong);
-  --ring: var(--accent);
+  /* 焦点环。★2026-11-23：原来是 `var(--accent)`（陶土橙 #d97757）—— 它在亮色纸底上只有
+     2.96:1、卡片底 3.12:1，再过一道 `outline-ring/50`（@layer base 那行）就掉到 **1.67:1**，
+     远低于 WCAG 1.4.11 对焦点指示的 3:1。改用同色系的深一档 `--accent-ink`：
+     亮色 #a94f32 在纸底 5.18:1 / 卡片 5.45:1，暗色 #efa489 在纸底 8.20:1 / 卡片 7.06:1。
+     观感仍是陶土色，只是深一档；它和 `.sk-hand` 的手写小注本来就共用这支笔。 */
+  --ring: var(--accent-ink);
   /* 九色调色板：曲线要用几组同时可分辨的线，单色阶在三组以上就只剩深浅。
      这一版刻意把色相往「纸上颜料」那边压（蓝／陶土／青／紫／砖红／橄榄／蓝青／
      赭黄／品红），饱和度比默认主题低一档——米白纸面上高饱和的线会显得是另一个界面的。
@@ -166,7 +176,6 @@
   --ink: #f0eee6;
   --ink-2: #d1cfc5;
   --ink-3: #a8a69d;
-  --ink-4: #87867f;
   --stroke: #e8e6dc;
   --line: rgba(240, 238, 230, .12);
   --line-strong: rgba(240, 238, 230, .28);
@@ -211,7 +220,7 @@
   --accent-foreground: var(--ink);
   --border: var(--line);
   --input: var(--line-strong);
-  --ring: var(--accent);
+  --ring: var(--accent-ink);
   /* 与亮色同一份色相，只抬亮度：深色底上压暗的线会糊在一起。 */
   --chart-1: #7ea6d8;
   --chart-2: #e0916a;
@@ -236,6 +245,13 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  /* ★2026-11-23：`--elev` 一直**没有映射**到 utility 命名空间 —— 它在 :root / .dark 里都有值，
+     但这里只写了 --color-card / --color-popover 指向它，于是 `bg-elev` 这个类根本没生成
+     （`grep -c '.bg-elev' dist/assets/*.css` = 0）。三个调用点全哑了：
+     button.tsx:19 与 badge.tsx:17 的 outline 变体、NodeDetail.tsx:644 的备注 chip ——
+     实测 computed backgroundColor 是 rgba(0,0,0,0)，本该"抬升一层"的底色与卡片同色。
+     与 1.22.2 修过的 `--accent` 那次是同一个形态：token 名在，但没接到 Tailwind 的命名空间。 */
+  --color-elev: var(--elev);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -254,7 +270,6 @@
   --color-paper-warm: var(--paper-warm);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
-  --color-ink-4: var(--ink-4);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-accent-2: var(--accent-2);
@@ -284,7 +299,12 @@
 }
 
 @layer base {
-  * { @apply border-border outline-ring/50; }
+  /* ★2026-11-23：这里是 `outline-ring/50`（一半透明的焦点环）—— 实测亮色纸底上只有
+     1.67:1、卡片 1.71:1，暗色 2.44–2.60:1，全部低于 WCAG 1.4.11 的 3:1。那一半透明度是
+     shadcn 默认的装饰性做法，在「焦点必须看得见」这件事上只会帮倒忙，所以去掉。
+     配套：--ring 由 `var(--accent)` 换成更深的 `var(--accent-ink)`（见 :root 那段注释），
+     亮色 5.18:1 / 暗色 8.20:1。 */
+  * { @apply border-border outline-ring; }
   /* Reserve the scrollbar's width on every page: without it, leaving a route
      whose content exceeds the fold widens the page. */
   /* 字体在这里显式落到 html 上，不靠 Tailwind 的 --default-font-family：@theme inline
@@ -441,9 +461,6 @@
   transition: transform .15s ease, background-color .15s ease;
 }
 .sk-icon:hover { transform: rotate(-6deg); background: var(--paper-warm); }
-@media (prefers-reduced-motion: reduce) {
-  .sk-btn:hover, .sk-icon:hover, .sk-lift:hover, .sk-chip:hover, .sk-check:hover { transform: none; }
-}
 
 /* 标签胶囊：**只给圆角与悬停**，描边与底色由调用处的工具类给。
    ★同样不能在这里写 border / background：未分层规则会盖掉 `bg-butter`（选中态）与
@@ -558,6 +575,19 @@
 .sk-check:checked { background: var(--fill-butter); }
 .sk-check:checked::after { transform: translateY(-1px) rotate(-48deg) scale(1); }
 .sk-check:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* 「减弱动态效果」的总闸：**必须排在所有 hover 变换之后**。
+   ★2026-11-23：原来这段放在 `.sk-icon:hover` 下面（约 445 行），可是 `.sk-chip:hover`（461）
+   与 `.sk-check:hover`（548）在它后面 —— 同特异性后者胜，于是手机开了「减弱动态效果」后
+   这两枚照旧在转。真机实测（prefers-reduced-motion: reduce）：`.sk-btn` / `.sk-lift` /
+   `.sk-icon` 都是 `transform: none` ✅，`.sk-chip` 是 `matrix(0.999848,-0.0174524,…)`（-1°）✗。
+   挪到文件这一层之后：所有 hover 变换规则都已声明完，`transform: none` 稳赢。
+   新增带 transform 的 hover 规则时要加进下面这个选择器表，或者干脆放在它上面。 */
+@media (prefers-reduced-motion: reduce) {
+  .sk-btn:hover, .sk-btn:active,
+  .sk-icon:hover, .sk-lift:hover,
+  .sk-chip:hover, .sk-check:hover { transform: none; }
+}
 
 /* 手写小注（空状态、「剩余价值」那类口径提示）。 */
 .sk-hand { font-family: var(--font-hand); color: var(--accent-ink); }
@@ -746,9 +776,12 @@
 }
 
 /* 顶栏那枚开关：关掉时压暗，一眼看得出地球是关着的。 */
-.globe-toggle[aria-pressed="false"] { color: var(--muted-foreground); opacity: 0.6; }
+/* 地球开关「关」的那一档。★2026-11-23：`opacity: 0.6` 在亮色纸底上只有 **2.64:1**，
+   低于 WCAG 1.4.11 对非文本图标的 3:1；改 0.75（3.55:1）—— 仍然一眼看得出「这是关着的」，
+   但不再淡到看不清图标本身。 */
+.globe-toggle[aria-pressed="false"] { color: var(--muted-foreground); opacity: 0.75; }
 
-/* 页脚署名（右下角那行）：比正文的弱化色再淡一档，只作署名，不跟页面里的读数抢注意力；
+/* 页脚署名（右下角那行）：用正文的弱化色，不再叠 opacity（见 .theme-credit 那段）。
    「rakugaki」那截是本主题的源码仓库链接（地址见 App.tsx 的 REPO_URL），悬停才出下划线。 */
 /* 顶栏那条图标带（.header-tools）：装不下时横向滑动，与分组标签同一套做法。
    滑动条藏起来 —— 它长在 sticky 顶栏里、又只在窄窗口才出现，露出来就是一条横杠；
@@ -757,10 +790,14 @@
 .header-tools::-webkit-scrollbar { display: none; }
 
 .theme-credit {
+  /* ★2026-11-23：原来 `color: var(--muted-foreground)` + `opacity: 0.62` —— 12px 正文压到
+     0.62 不透明度之后在纸底上混成 (191,190,187)，对比度只有 **2.74:1**（暗色 3.46:1），
+     都低于 WCAG AA 对正文的 4.5:1。而 `--muted-foreground` 本身是 6.26:1（暗色 5.88:1），
+     本来就达标 —— 只要别再往下淡出就行。去掉 opacity，颜色保持原样。
+     （`verify_footer_credit` 那条「比顶栏站名浅」仍然成立：站名走正文 ink，17.5:1。） */
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.6;
-  opacity: 0.62;
 }
 .theme-credit a { color: inherit; text-decoration: none; }
 .theme-credit a:hover { text-decoration: underline; }
@@ -832,7 +869,18 @@
    系统灰滚动条（厚拇指 + 上下箭头 + 浅灰轨道）在一张纸片上像贴反的零件。改成——
    轨道全透（纸面直接露出来）、拇指是一小截淡墨的圆头、去掉箭头按钮；悬停加深一档。
    Firefox 走 `scrollbar-color`（与 Chrome 的视觉对齐），Chrome/Edge/Safari 走 ::-webkit-*。
-   `scrollbar-gutter: stable` 让有/无滚动的两类浮层的右缘一样宽，金额列不跳。 */
+   `scrollbar-gutter: stable` 让有/无滚动的两类浮层的右缘一样宽，金额列不跳。
+
+   ★2026-11-23：上面那套「两套都写」在 Chromium 里是**互相打架**的 —— 只要元素上生效了
+   `scrollbar-color`，Chromium 就整段丢弃 `::-webkit-scrollbar` 的造型（同一份 CSS 实测：
+   只写 `::-webkit-scrollbar{width:30px}` 槽宽 30px；再加 `scrollbar-color` 就退回 UA 的 15px
+   细条，`::-webkit-scrollbar-thumb` 的圆头也不画）。所以现在按能力分流：
+     · 支持 `scrollbar-color` 的浏览器（Chromium 121+ / Firefox）走标准那一支 —— 这正是原来
+       实际生效的那套外观，视觉不变，::‑webkit-* 那几行只当给老 Safari 的回落；
+     · 但 `.detail-scroll` 的滚动条太窄（10px 槽里 3px 描边只剩 4px 拇指），Chromium 的
+       `scrollbar-color` 又画不出圆头 —— 所以 Chrome 这一支改用 `scrollbar-width: thin` 并把
+       颜色交给标准属性，造型统一由 `scrollbar-color` 说了算，不再指望被丢弃的 ::-webkit-*。
+   判据见 tools/verify_scrollbar.mjs（同一元素两种写法量槽宽与拇指色）。 */
 /* ★2026-10-31 与母主题 jikasei 同步成三段式：外壳只管高度上限，表头与尾巴是固定项，
    只有中间那节 `.detail-scroll` 滚动 —— 一百多台机器滚到底，仍知道自己在看哪张卡的多少台。 */
 .budget-detail,

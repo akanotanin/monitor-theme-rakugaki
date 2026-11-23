@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 // 便签胶囊：1.5px 墨线 + 歪圆角（`.sk-chip` 给圆角，并按奇偶换一版）。
 const badgeVariants = cva(
-  "sk-chip inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden border-[1.5px] border-stroke px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
+  "sk-chip inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden border-[1.5px] border-stroke px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
   {
     variants: {
       variant: {

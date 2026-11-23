@@ -171,10 +171,28 @@ eq(cityHint(node(2, "Lightlayer SJC", "US"))?.name, "San Jose", "机场码认得
 eq(cityHint(node(3, "华纳云 JP", "JP")), null, "认不出城市就返回 null（交给国家落点）")
 eq(cityHint(node(4, "魏武王", "CN", { group: "香港" }))?.name, "Hong Kong", "分组名也参与匹配（站点常用的地方）")
 
+/* ---------------------------------------------------------------- 三字码是弱线索（2026-11-23） */
+// 真机量的三条误判：分组缩写 / 机器名前缀同时是机场码，原来会把这台钉到另一个国家去。
+// 判据：命中那段是**纯字母码**、且节点国家码不在该城市的 cc 表里 → 丢这条线索，继续找下一条。
+eq(cityHint(node(40, "sg-01", "SG", { group: "SEA" }))?.name, "Singapore", "SG/SEA：SEA 不再被认成 Seattle（中文/全名之外的弱线索要校验国家）")
+eq(cityHint(node(41, "ca-01", "CA", { group: "CAN" }))?.name, undefined, "CA/CAN：CAN 不再被认成广州（广州不是 CA 的城市）→ 无线索，交给国家落点")
+eq(cityHint(node(42, "SG-01", "DE"))?.name, undefined, "DE + 名字里的 SG 不被认成 Singapore → 无线索")
+eq(cityHint(node(43, "us-01", "US", { group: "LAX" }))?.name, "Los Angeles", "同国三字码照旧生效（LAX 属于 US）")
+eq(cityHint(node(44, "jp-01", "JP", { group: "SJC" }))?.name, undefined, "异国三字码照样丢（SJC 属 US，JP 的机器不吃这条）")
+eq(cityHint(node(45, "东京 01", "SG"))?.name, "Tokyo", "中文写法是强线索：不校验国家（站长写「东京」就要东京）")
+eq(cityHint(node(46, "Seattle", "DE"))?.name, "Seattle", "城市全名是强线索：同样不校验国家")
+eq(cityHint(node(47, "sg-01", "SG", { group: "SEA" }))?.cc, ["SG"], "返回的 cc 用来补国家码（缺 country 时给 key 用）")
+eq(cityHint(node(48, "sg-01", "SG", { group: "sea" }))?.name, "Singapore", "小写分组缩写（sea）同样按弱线索校验，不走免检通道")
+eq(cityHint(node(49, "ca-01", "CA", { group: "can" }))?.name, undefined, "小写 can 也不被认成广州")
+
 eq(regionOf(node(1, "阿里 广州", "CN")), { key: "CN · Guangzhou", code: "CN", city: "Guangzhou", label: "Guangzhou", base: [113.2644, 23.1291] }, "国家码 + 城名 = 地区键（城名线索优先于国家落点）")
 eq(regionOf(node(2, "Nobrand Traffic Bug", "jp")), { key: "JP", code: "JP", city: "", label: "Japan", base: [139.7, 35.7] }, "认不出城市 → 国家级写国家名（Japan，不再裸写 JP），国家码大小写归一")
 eq(regionOf(node(2, "Nobrand Traffic Bug", "de")), { key: "DE", code: "DE", city: "", label: "Germany", base: [8.7, 50.1] }, "同上（Germany）——与 JP 同一套写法")
-eq(regionOf(node(3, "无名", "")), null, "没有国家码的节点不上地球")
+// ★2026-11-23 改：没有国家码、但名字/分组认得出城市时**不再整台丢弃**（hub 地理库缺项时 country
+//   是空串，那台原来既不上地球也不进地区列表）。国家码从城市归属表补。
+eq(regionOf(node(3, "无名", "")), null, "没有国家码、也认不出城市 → 不上地球")
+eq(regionOf(node(3, "Tokyo-01", "")), { key: "JP · Tokyo", code: "JP", city: "Tokyo", label: "Tokyo", base: [139.6917, 35.6895] }, "没有国家码但认得出城市 → 用城市归属国补 key（Tokyo-01 上地球）")
+eq(regionOf(node(3, "香港 03", " "))?.key, "HK · Hong Kong", "国家码是空白字符时同上（香港-01 不再被丢掉）")
 eq(regionOf(node(4, "某地", "XA")), null, "国家码不在表里、又认不出城市 → 不上地球")
 ok(regionOf(node(5, "纳泰-DE9929", "DE")) !== null, "表里有 DE")
 

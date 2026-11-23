@@ -98,9 +98,20 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   )
 }
 
+/**
+ * 一枚「选中态按钮」。页签（资源 / 网络延迟）与量程（1 小时…30 天）共用这一个组件。
+ *
+ * ★2026-11-23：原来只靠 `bg-butter` 这个背景色表达「当前是哪一档」，**没有任何状态语义** ——
+ * 实测六枚按钮的 `role` / `aria-selected` / `aria-pressed` 全是 null，读屏用户听不出选中谁。
+ * 这里用 `aria-pressed`（而不是 role=tab）：同一个组件同时当页签与量程用，
+ * `role=tab` 要求配 tablist + tabpanel，而量程那排语义上就是一组开关；
+ * `aria-pressed` 两种用法都成立，一个属性就够。
+ */
 function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`tap tap-y-6 sk-chip border-[1.5px] px-2.5 py-1 text-xs transition-colors ${
         active
@@ -529,7 +540,14 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
                 </>
               )}
               {onOpenDetail && (
-                <button onClick={onOpenDetail} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                /* ★shrink-0 + whitespace-nowrap：这一条挂在 `ml-auto flex-1` 的容器右端，
+                   量程按钮组（保留天数一多就是 5 枚）把容器压到只剩个位数像素时，没有这两条
+                   五个汉字会逐字换行，按钮变成 12×80 的竖条（390 宽、390×844 实测）。
+                   它是这一行唯一不带说明的出口，宁可让左侧备注条先缩，也不能让它折。 */
+                <button
+                  onClick={onOpenDetail}
+                  className="shrink-0 whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
                   完整详情 ›
                 </button>
               )}
@@ -712,7 +730,7 @@ export function NodeDetail({ node, embedded = false, onOpenDetail, historyDays, 
               里都只有 `procs` 一个数，没有逐进程的列表/接口 —— 详见交付说明），所以这里画的是
               进程总数的走势，口径与「TCP / UDP 连接」同款：计数不填面积、轴顶取窗口峰值。
               标题右端那个数是当前值（与信息格里「N 进程」同源），方便一眼对照曲线末端。 */}
-          <Panel title={`进程 · ${m ? m.procs : "—"}`}>
+          <Panel title={`进程 · ${m?.procs ?? "—"}`}>
             <TimeChart
               rows={metricRows}
               series={[{ key: "procs", name: "进程", color: "var(--chart-8)" }]}

@@ -336,9 +336,20 @@ export default function App() {
   const collapseSearch = () => setSearchOpen(false)
   // 窄屏那枚墨线圆盘＝顶栏下面那一行的开关；桌面什么都不用做（CSS 的 :focus-within 自己长开）。
   // 用 matchMedia 而不是把它存成 state：这里只在事件里问一次，没必要为它挂一条媒体查询订阅。
+  //
+  // ★2026-11-23：窄屏**收起要走 closeSearchRow（连词一起清）**。原来这里是无条件取反
+  //   `setSearchOpen(!was)`，第二次点图标就把那一行关掉、却把词留在 state 里 ——
+  //   实测 390 宽：输入「东京」列表剩 1 条，再点图标后输入框变成 value=东京 / 宽 36px /
+  //   color 透明，列表仍然只剩 1 条，页面上没有任何「正在筛」的可见线索（触屏也没有 title）。
+  //   展开那一支保持不变。
   const onSearchActivate = () => {
     const narrow = typeof matchMedia === "function" && matchMedia("(max-width: 639px)").matches
-    setSearchOpen((was) => (narrow ? !was : false))
+    if (!narrow) {
+      setSearchOpen(false)
+      return
+    }
+    if (searchOpen) closeSearchRow()
+    else setSearchOpen(true)
   }
   // 窄屏那一行收起：连词一起清掉 —— 那一行是「临时张开的一块地方」，收起后顶栏上看不见它，
   // 留着词就成了看不见的筛选。（桌面那套不一样：收起态本来就是那枚图标，词留着有据可依。）

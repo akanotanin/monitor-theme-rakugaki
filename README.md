@@ -48,4 +48,4 @@
 
 从 [Releases](https://github.com/akanotanin/monitor-theme-rakugaki/releases) 下载 `theme.tar.gz` 上传到
 探针后台，之后可在主题卡片上点「从 GitHub 更新」。MIT（上游 `monitor-theme-default` 的版权与许可
-照留，见 [LICENSE](LICENSE)）；随包的四款字体以 SIL Open Font License 1.1 授权，见 [FONTS.md](FONTS.md)。
+照留，见 [LICENSE](LICENSE)）；随包的七款字体（12 个 woff2 子集）以 SIL Open Font License 1.1 授权，见 [FONTS.md](FONTS.md)。

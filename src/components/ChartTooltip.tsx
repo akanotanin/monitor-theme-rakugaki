@@ -137,7 +137,11 @@ export function PingTooltip({
       capNarrow={5}
       format={(value) => `${value} ms`}
       // 没答上来的排最后：它们是「没有值」，不是「很快」。
-      sortKey={(entry) => (entry.value == null ? Number.MAX_SAFE_INTEGER : Number(entry.value))}
+      // ★2026-11-23 修：`worstFirst` 走的是**降序**（`key(b) - key(a)`），所以「排最后」
+      //   对应的是最小值，不是最大值 —— 原来写 `Number.MAX_SAFE_INTEGER` 让超时行排到了
+      //   第一位（实测四条线：教育网 无响应 / 移动 300 / 联通 120 / 电信 60），窄屏
+      //   `capNarrow: 5` 时还会把真正最慢的线路挤进「另有 N 条」。
+      sortKey={(entry) => (entry.value == null ? -Infinity : Number(entry.value))}
       keepEmpty={(entry) => lossOf(entry) > 0}
       emptyText="无响应"
       trailing={(entry) => {

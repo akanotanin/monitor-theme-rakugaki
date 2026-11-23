@@ -117,7 +117,8 @@ export function peakTargets(nodes: Node[]): Node[] {
 
 /** 缓存 60 秒。 */
 const TTL = 60_000
-const cache = new Map<number, { at: number; peak: TrafficPeak }>()
+/** 缓存条目：`day` 是这份峰值属于哪一天（`dayStart` 的返回值），跨零点必须失效。 */
+const cache = new Map<number, { at: number; day: number; peak: TrafficPeak }>()
 const inflight = new Map<number, Promise<TrafficPeak>>()
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -144,12 +145,20 @@ async function fetchOne(node: Node, now: number): Promise<TrafficPeak> {
 /** 取一台的峰值（命中缓存就直接给）。 */
 export function peakFor(node: Node, now = Date.now()): Promise<TrafficPeak> {
   const hit = cache.get(node.id)
-  if (hit && now - hit.at < TTL) return Promise.resolve(hit.peak)
+  // ★2026-11-23 两处修正：
+  //   ① **跨零点必须失效**：缓存值是 `peakToday(rows, now)` 的产物，窗口由 `dayStart(now)`
+  //      （北京时间 0 点）裁出来 —— 23:59:50 写进来的峰值，00:00:20 再读出来就成了「今天」的，
+  //      行上仍写上午、峰值时刻也是昨晚的。所以条目里记下 `day`，跟当前这一天对不上就不命中。
+  //   ② **TTL 要有下界**：原来只写 `now - hit.at < TTL`，时钟回拨（或 `now` 传了个更早的值）时
+  //      它是负数、恒为 true，缓存永不失效。fx.ts 同一判据写的是 `age >= 0 && age < TTL`。
+  const day = dayStart(now)
+  const age = hit ? now - hit.at : 0
+  if (hit && hit.day === day && age >= 0 && age < TTL) return Promise.resolve(hit.peak)
   const running = inflight.get(node.id)
   if (running) return running
   const job = fetchOne(node, now)
     .then((peak) => {
-      cache.set(node.id, { at: Date.now(), peak })
+      cache.set(node.id, { at: Date.now(), day, peak })
       return peak
     })
     .finally(() => inflight.delete(node.id))

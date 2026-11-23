@@ -36,6 +36,42 @@ for (const key of Object.keys(declared)) {
 if (problems.length) throw new Error(`设置项默认值两边不一致：\n  ${problems.join('\n  ')}`)
 console.log(`设置项默认值一致：${fields.map((f) => `${f.key}=${f.default}`).join('、')}`)
 
+// ★2026-11-23 补：**选项清单**也要对得上。原来只比默认值，于是
+//   theme.json 里删掉 cardStyle 的 wide 一档（后台再也选不到宽卡）、
+//   或塞一个 TS 联合类型里不存在的值（hologram），这个脚本都照样 exit 0。
+// 判据：把 site-settings.ts 里 `name: "a" | "b" | ...` 与 `export type X = "a" | ...`
+//   两种形状都收成「键 → 字面量集合」，再与 theme.json 各 select 的 options[].value 求对称差。
+// ★按**行**收，别用贪婪组：6 个值的 `cardStyle:` 那行会被
+//   截成前两个（实测只收到 classic|latency），后面 4 个全被误报成「theme.json 多出来的」。
+const unions = {}
+const uniLine = /^\s*(?:export\s+type\s+)?(\w+)\s*[=:]\s*((?:"[^"]+"\s*\|\s*)*"[^"]+")\s*$/
+for (const line of source.split("\n")) {
+  const m = line.match(uniLine)
+  if (m && /^"[^"]*"(?:\s*\|\s*"[^"]*")+$/.test(m[2].trim())) {
+    unions[m[1]] = [...m[2].matchAll(/"([^"]+)"/g)].map((x) => x[1])
+  }
+}
+
+// theme.json 不知道 TS 的类型名，靠「哪个联合类型包含这个 key 的默认值」配型；
+// 同名字段优先（cardStyle → ThemeConfig.cardStyle），否则取重叠最多的那一族。
+const optionProblems = []
+for (const field of fields) {
+  if (field.type !== "select" || !Array.isArray(field.options)) continue
+  const values = field.options.map((o) => o.value)
+  const candidates = Object.entries(unions).filter(([, vals]) => vals.includes(field.default))
+  const anchor = candidates.find(([name]) => name === field.key)
+    ?? candidates.sort((a, b) => b[1].filter((v) => values.includes(v)).length - a[1].filter((v) => values.includes(v)).length)[0]
+  if (!anchor) {
+    optionProblems.push(`${field.key}: theme.json 的默认值 ${JSON.stringify(field.default)} 在 site-settings.ts 的任何联合类型里都找不到`)
+    continue
+  }
+  const [typeName, typeVals] = anchor
+  for (const v of values.filter((v) => !typeVals.includes(v))) optionProblems.push(`${field.key}: theme.json 有选项 ${JSON.stringify(v)}、${typeName} 里没有`)
+  for (const v of typeVals.filter((v) => !values.includes(v))) optionProblems.push(`${field.key}: ${typeName} 有 ${JSON.stringify(v)}、theme.json 的选项里没有`)
+}
+if (optionProblems.length) throw new Error(`设置项选项清单两边不一致：\n  ${optionProblems.join('\n  ')}`)
+console.log(`设置项选项清单一致：${fields.filter((f) => f.type === "select").map((f) => `${f.key}(${f.options.length})`).join('、')}`)
+
 // 站名那个缓存键散在三处（App 一处、早跑脚本一处、index.html 的内联脚本一处）——它们必须逐字
 // 一致。不一致的症状很阴：缓存有人写、没人读（或反过来），页面照常、后台照常，只是刷新时先闪
 // 一次占位值，谁也不报错。这里一次比清，顺带保住那条早跑脚本没被删。

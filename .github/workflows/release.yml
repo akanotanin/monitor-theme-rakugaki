@@ -35,6 +35,12 @@ jobs:
               const version = JSON.parse(fs.readFileSync(file, "utf8")).version;
               if (version !== tag) throw new Error(`${file} 的版本 ${version} 与 tag ${tag} 不一致`);
             }
+            // ★2026-11-23：lock 里也有一份版本号（`version` 与 `packages[""].version`），
+            // 原来是 1.22.1 而 package.json 已经 1.22.3 —— 只校验前两个文件就漏了它。
+            const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+            for (const [what, version] of [["package-lock.json", lock.version], ["package-lock.json 的 packages 根", lock.packages?.[""]?.version]]) {
+              if (version !== tag) throw new Error(`${what} 的版本 ${version} 与 tag ${tag} 不一致`);
+            }
           '
       - run: npm ci
       # package 自己会先 build，再校验 dist/ 是否比源码新，最后打 theme.tar.gz 并开包核对

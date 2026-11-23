@@ -213,6 +213,11 @@ export function TimeChart({
     const onWheel = (e: WheelEvent) => {
       const st = wheelRef.current
       if (st.plotH <= 0) return
+      // ★2026-11-23：`Ctrl`/`Cmd` + 滚轮是浏览器的**页面缩放**手势，不是图表手势。
+      //   原来这里无条件 preventDefault，真机实测 `ctrlPrevented: true`（刻度从 0/25/50/75
+      //   变成 25/50/75/100，页面缩放被吃掉）—— 想放大页面的访客在图上滚不动。
+      //   现在直接放行：既不缩放图表，也不拦默认行为。
+      if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
       // deltaMode：0=像素（绝大多数）、1=行、2=页；先归一到「像素」口径。
       let d = e.deltaY

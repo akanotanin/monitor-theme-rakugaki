@@ -122,13 +122,67 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 错误消息的归一化：**别把响应体原样当消息**。
+ *
+ * ★2026-11-23：原来 `throw new ApiError(res.status, (await res.text()) || res.statusText)`。
+ * 反代回 502 时 body 是一整页 nginx HTML —— 实测 `ApiError.message` 是
+ * `<!DOCTYPE html><html><head><title>502 Bad Gateway</title>…`（1.5 万字），而 App.tsx 的
+ * `{error && <p>{error}</p>}` 会把它整段横在列表上方。这里做三件事：剥标签、折叠空白、截断。
+ * 拿不到可读文本才退回 statusText。
+ */
+function briefError(status: number, raw: string, statusText: string): string {
+  const text = raw
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const head = text.slice(0, 160)
+  if (!head) return statusText || `HTTP ${status}`
+  return text.length > 160 ? `${head}…（HTTP ${status}）` : head
+}
+
+/** 单个请求的超时。历史窗口那条最贵（hub 建窗口要几秒），其余都够用。 */
+const TIMEOUT_MS = 12_000
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
-  })
-  if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
-  return res.status === 204 ? (undefined as T) : res.json()
+  // ★2026-11-23：这里原来**没有任何超时**。服务端接受连接却永不响应时（反代半开、hub
+  //   建历史窗口卡住），`fetch` 会一直挂着 —— Latency 那个「最多三条并发」的模块级队列
+  //   于是永远不归还名额，三次之后全站每张卡片的延迟块都停止刷新，只能刷新页面。
+  //   现在统一 12s 超时；调用方传了自己的 signal 时会合并（任一 abort 都生效）。
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(new DOMException("timeout", "TimeoutError")), TIMEOUT_MS)
+  const outer = init?.signal
+  const onOuterAbort = () => ctl.abort(outer?.reason)
+  if (outer) {
+    if (outer.aborted) onOuterAbort()
+    else outer.addEventListener("abort", onOuterAbort, { once: true })
+  }
+  try {
+    const res = await fetch(`/api${path}`, {
+      ...init,
+      signal: ctl.signal,
+      headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
+    })
+    if (!res.ok) throw new ApiError(res.status, briefError(res.status, await res.text().catch(() => ""), res.statusText))
+    if (res.status === 204) return undefined as T
+    // ★200 + HTML（hub 回落到 index.html、被反代换成错误页）时 `res.json()` 抛的是
+    //   `SyntaxError: Unexpected token '<'`，原文进 UI 比不说还糊涂。这里换成一句人话。
+    try {
+      return (await res.json()) as T
+    } catch {
+      throw new ApiError(res.status, `响应不是 JSON${res.headers.get("content-type") ? `（${res.headers.get("content-type")}）` : ""}`)
+    }
+  } catch (e) {
+    // 超时也要给一句能读的（AbortSignal.timeout 的 reason 在某些实现里是字符串）
+    if (ctl.signal.aborted && !(outer?.aborted)) {
+      throw new ApiError(0, `请求超时（${TIMEOUT_MS / 1000}s）`)
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+    outer?.removeEventListener("abort", onOuterAbort)
+  }
 }
 
 /**
@@ -179,7 +233,11 @@ export function safeNodes(nodes: Node[]): Node[] {
     if (!m) return node
     const valid = required.every((key) => number(m[key])) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(number)
     if (!valid) return { ...node, metrics: null }
-    if (optional.every((key) => typeof m[key] === "number")) return node
+    // ★2026-11-23：快路径原来用 `typeof === "number"`，绕过了 `number()` 的
+    //   `Number.isFinite(v) && v >= 0` —— 同一份坏数据（tcp:-5 / procs:-3）走快路径时
+    //   负数原样留下，只把其中一个改成 undefined 又会走下面那个循环全置 null，两条路给出
+    //   两种结果。这里改用同一个判据（顺带省掉下面那次 map 的无谓遍历）。
+    if (optional.every((key) => number(m[key]))) return node
     const metrics = { ...m }
     for (const key of optional) metrics[key] = number(m[key]) ? (m[key] as number) : null
     return { ...node, metrics }
@@ -228,7 +286,14 @@ export function useNodes() {
 
     const fetchOnce = () =>
       api<{ nodes: Node[] }>("/nodes")
-        .then((d) => receive(d.nodes))
+        .then((d) => {
+          // ★2026-11-23：WS 那条路有 `Array.isArray(list)` 守卫（坏帧直接丢、页面不动），
+          //   HTTP 这条没有 —— hub 回 `{}` 时 `receive(undefined)` 会在 safeNodes 里抛
+          //   `TypeError: Cannot read properties of undefined (reading 'map')`，页面停在骨架屏
+          //   并且把这句话原样显示给访客。两条路对同一份坏数据要一致：这里也丢掉。
+          if (!Array.isArray(d?.nodes)) throw new ApiError(200, "节点列表格式不对")
+          receive(d.nodes)
+        })
         .catch((e: Error) => {
           setError(e.message)
           if (e instanceof ApiError && e.status === 401) setClosed(true)
