@@ -15,14 +15,22 @@
 //   那批整批判成「没画出来」）；下面的排版断言则不管哪种布局都成立。
 //
 // 用法: node tools/verify_settings_dialog.mjs <theme.json> <截图前缀> [baseUrl=http://127.0.0.1:28081]
-//
-// 用法: node tools/verify_settings_dialog.mjs <theme.json> <截图前缀> [baseUrl=http://127.0.0.1:28081]
 //   baseUrl 通常是 ssh -L 隧道到测试 hub 的本地端口。
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises';
 import { assertDistFresh } from "./_dist-fresh.mjs"
 import { findChrome } from "./_chrome.mjs"
+
+// 这条不在 `npm run guard` 的默认批里：它要两枚位置参数、且要连一个真 hub 的后台 SPA。
+// 裸跑以前会抛 `TypeError: path must be of type string`（readFileSync(undefined)）——
+// 一个护栏崩溃时的栈比「用法」难读得多，所以先给用法再退 2。
+if (!process.argv[2]) {
+  console.error('用法：node tools/verify_settings_dialog.mjs <theme.json> <截图前缀> [baseUrl=http://127.0.0.1:28081]')
+  console.error('  需要连一个真 hub 的后台（baseUrl 通常是 ssh -L 隧道到测试 hub 的本地端口）。')
+  process.exit(2)
+}
+
 assertDistFresh()
 
 const MANIFEST = JSON.parse(readFileSync(process.argv[2], 'utf8'));

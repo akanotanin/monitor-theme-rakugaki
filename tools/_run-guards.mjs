@@ -95,6 +95,18 @@ if (shardArg) {
   console.log(`分片 ${idx + 1}/${total}：${names.length} 支（共 ${base.length} 支）`)
 }
 
+/** 需要位置参数、且大多要连一个真 hub 后台的那几条：它们**不在**默认批里，
+ *  单独点名跑时直接给用法而不是让它抛栈（脚本自己也有守卫，这里只是提前一步说清楚）。
+ *  这份表与 DEFAULT 的差集就是「默认批为什么是 35 而不是 41」的答案。 */
+const NEEDS_ARGS = {
+  verify_detail_preload: 'node tools/verify_detail_preload.mjs <上游 hub 地址> [节点id] [用例1|2|3]',
+  verify_globe_coverage: 'node tools/verify_globe_coverage.mjs [经度步长=5] [纬度步长=5]',
+  verify_latency_range: 'node tools/verify_latency_range.mjs [baseUrl=http://127.0.0.1:28081]',
+  verify_live_default: 'node tools/verify_live_default.mjs <站点URL> [期望形态]',
+  verify_live_globe_toggle: 'node tools/verify_live_globe_toggle.mjs <站点地址> [截图输出目录]',
+  verify_settings_dialog: 'node tools/verify_settings_dialog.mjs <theme.json> <截图前缀> [baseUrl]',
+}
+
 const avail = new Set(
   readdirSync('tools').filter((f) => f.startsWith('verify_') && f.endsWith('.mjs')).map((f) => f.slice(0, -4)),
 )
@@ -102,6 +114,15 @@ const missing = names.filter((n) => !avail.has(n))
 if (missing.length) {
   console.error(`✗ 没有这些护栏脚本：${missing.join('、')}`)
   console.error(`  可用的：${[...avail].sort().join('、')}`)
+  process.exit(2)
+}
+
+// 只在**点名**跑时拦（默认批里本来就没有它们）；顺手把用法打出来。
+const needsArgs = names.filter((n) => NEEDS_ARGS[n])
+if (needsArgs.length) {
+  console.error(`✗ 这 ${needsArgs.length} 条要参数（也多半要连真 hub），不能用这个入口跑：`)
+  for (const n of needsArgs) console.error(`    ${NEEDS_ARGS[n]}`)
+  console.error('  它们不在默认批里，所以 `npm run guard` 不带参数时不会碰它们。')
   process.exit(2)
 }
 
