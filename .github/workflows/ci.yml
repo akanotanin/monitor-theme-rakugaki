@@ -34,14 +34,20 @@ jobs:
       - run: npm run check
       - run: npm run build
 
-  # 真机护栏：37 个 tools/verify_*.mjs 伺服 dist/ 跑无头 Chrome。★2026-11-23 加：
-  # 这些脚本原来**只在本机手动跑**，CI 里一个都没执行过（`grep -rn verify_ .github/` 为空），
-  # 于是「本地全绿」既有「忘了 build 的旧产物」也有「CI 根本没验」两层虚。
-  # ubuntu-latest 自带 chromium（verify 脚本的 CHROME 探测链里就有 /usr/bin/chromium）。
-  # 先 npm run build 保证 dist 新鲜（护栏自己也会在 dist 落后时 exit 1）。
-  # 只跑不依赖真 hub 的那一批：verify_detail_preload / verify_live_* 要连上游，留给本机。
+  # 真机护栏：用 `npm run guard` 伺服 dist/ 跑无头 Chrome。★2026-11-23 加：这些脚本原来
+  # **只在本机手动跑**，CI 里一个都没执行过，于是「本地全绿」既有「忘了 build 的旧产物」
+  # 也有「CI 根本没验」两层虚。
+  #
+  # ★不要再在 workflow 里手抄脚本清单：抄过一次就漂了（当时抄了 18 支，而 `npm run guard`
+  #   的默认批是 35 支，17 支从来没在 CI 里跑过）。这里只调入口，清单只有 tools/_run-guards.mjs
+  #   一份。分片按「清单里的位置」取模，改清单不需要动 workflow。
+  # `npm run build` 先跑一遍：护栏自己也会在 dist 落后时 exit 1，那报错比 build 失败更难读。
   guards:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -61,13 +67,6 @@ jobs:
           fi
           echo "CHROME=$CHROME" >> "$GITHUB_ENV"
           "$CHROME" --version
-      - name: 核心版式护栏
-        run: |
-          for f in verify_card_form verify_card_styles verify_public_remark verify_touch_targets \
-                   verify_mobile_targets verify_keyboard_and_motion verify_region_coverage verify_tokens_and_a11y \
-                   verify_many_nodes verify_appearance verify_detail_charts verify_offline_last \
-                   verify_summary verify_search verify_card_style_menu verify_globe \
-                   verify_globe_scale verify_globe_colors; do
-            echo "=== $f"
-            node "tools/$f.mjs"
-          done
+      - name: 护栏（分片 ${{ matrix.shard }}/2）
+        run: npm run guard -- --shard ${{ matrix.shard }}/2
+

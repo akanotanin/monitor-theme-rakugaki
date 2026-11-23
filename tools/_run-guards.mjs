@@ -51,8 +51,49 @@ const DEFAULT = [
   'verify_globe_spin',
 ]
 
-const only = process.argv.slice(2)
-const names = only.length ? only.map((n) => n.replace(/\.mjs$/, '')) : DEFAULT
+/** 把 `--shard N/M` 从参数里摘出来（它两边都可能有：`npm run guard -- --shard 1/2` 或
+ *  `npm run guard -- verify_x --shard 1/2`），剩下的才是脚本名。 */
+const rawArgs = process.argv.slice(2)
+let shardArg = process.env.GUARD_SHARD || ''
+const only = []
+let listOnly = false
+for (let i = 0; i < rawArgs.length; i++) {
+  if (rawArgs[i] === '--shard') {
+    shardArg = rawArgs[i + 1] ?? ''
+    i++
+    continue
+  }
+  if (rawArgs[i].startsWith('--shard=')) {
+    shardArg = rawArgs[i].slice('--shard='.length)
+    continue
+  }
+  if (rawArgs[i] === '--list') {
+    listOnly = true
+    continue
+  }
+  only.push(rawArgs[i])
+}
+
+const base = only.length ? only.map((n) => n.replace(/\.mjs$/, '')) : DEFAULT
+let names = base
+
+// 分片按「清单里的位置」取模，不按名字哈希 —— 片子之间耗时大致均衡，也不会因为改名而整片漂移。
+// CI 用 matrix 并行两片：既保持 `npm run guard` 这份清单是唯一真相源，又不用把 35 支串着跑。
+if (shardArg) {
+  const m = /^(\d+)\/(\d+)$/.exec(String(shardArg).trim())
+  if (!m) {
+    console.error(`✗ --shard 要写成 N/M（例如 --shard 1/2），收到「${shardArg}」`)
+    process.exit(2)
+  }
+  const idx = Number(m[1]) - 1
+  const total = Number(m[2])
+  if (!(idx >= 0 && idx < total) || total < 1) {
+    console.error(`✗ --shard ${shardArg}：序号要在 1..${total} 之间`)
+    process.exit(2)
+  }
+  names = base.filter((_, i) => i % total === idx)
+  console.log(`分片 ${idx + 1}/${total}：${names.length} 支（共 ${base.length} 支）`)
+}
 
 const avail = new Set(
   readdirSync('tools').filter((f) => f.startsWith('verify_') && f.endsWith('.mjs')).map((f) => f.slice(0, -4)),
@@ -64,9 +105,15 @@ if (missing.length) {
   process.exit(2)
 }
 
-if (!existsSync('dist/index.html')) {
+if (!existsSync('dist/index.html') && !listOnly) {
   console.error('✗ 没有 dist/index.html —— 先 `npm run build`')
   process.exit(2)
+}
+
+// `--list`：只把要跑的清单打出来，不跑（核验分片用，`--list --shard 1/2`）。
+if (listOnly) {
+  names.forEach((n) => console.log(n))
+  process.exit(0)
 }
 
 /** 跑一个脚本，把输出收进缓冲区（只在失败时吐出来，成功的只留一行）。 */
