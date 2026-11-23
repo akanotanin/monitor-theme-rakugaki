@@ -101,19 +101,27 @@ const MIXED = {
  * 两台在线机器各给一段**今天**的桶（峰值与时刻写死，好断言），另外两台没有采样 ——
  * 浮层里那一栏该写「—」。只回 metrics（series=metrics），延迟那一路照旧回空。
  */
-const atToday = (h, m) => {
-  const d = new Date()
-  d.setHours(h, m, 0, 0)
-  return Math.floor(d.getTime() / 1000)
+/**
+ * 「北京时间的今天 h:m」对应的绝对秒数。
+ *
+ * ★别用 `new Date().setHours(h, m)`（本机本地时区）：这族的「今日流量」峰值时刻一律按
+ * **北京时间（UTC+8 固定）** 渲染，与本机时区无关。本机在 UTC+8 时两者恰好重合，
+ * 于是这个夹具在开发者机器上永远是绿的，到了 UTC runner 上整体偏 8 小时 ——
+ * `verify_summary` 就这么在 CI 首跑时红了两条（预期 06:00、实测 14:00）。
+ * 先取北京墙上时间的年月日，再按该日 h:m 求 UTC 的 epoch、减 8 小时。
+ */
+const bjTodayAt = (h, m) => {
+  const bj = new Date(Date.now() + 8 * 3600_000)
+  return Math.floor(Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate(), h, m, 0, 0) / 1000) - 8 * 3600
 }
 const PEAK_ROWS = {
   1: [
-    { ts: atToday(6, 0), net_rx: 1 * MB, net_tx: 1 * MB, net_rx_max: 20 * MB, net_tx_max: 3 * MB },
-    { ts: atToday(7, 30), net_rx: 2 * MB, net_tx: 2 * MB, net_rx_max: 4 * MB, net_tx_max: 8 * MB },
+    { ts: bjTodayAt(6, 0), net_rx: 1 * MB, net_tx: 1 * MB, net_rx_max: 20 * MB, net_tx_max: 3 * MB },
+    { ts: bjTodayAt(7, 30), net_rx: 2 * MB, net_tx: 2 * MB, net_rx_max: 4 * MB, net_tx_max: 8 * MB },
   ],
   2: [
-    { ts: atToday(5, 0), net_rx: 1 * MB, net_tx: 1 * MB, net_rx_max: 4 * MB, net_tx_max: 1 * MB },
-    { ts: atToday(5, 30), net_rx: 1 * MB, net_tx: 1 * MB, net_rx_max: 2 * MB, net_tx_max: 2 * MB },
+    { ts: bjTodayAt(5, 0), net_rx: 1 * MB, net_tx: 1 * MB, net_rx_max: 4 * MB, net_tx_max: 1 * MB },
+    { ts: bjTodayAt(5, 30), net_rx: 1 * MB, net_tx: 1 * MB, net_rx_max: 2 * MB, net_tx_max: 2 * MB },
   ],
 }
 

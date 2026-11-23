@@ -60,9 +60,13 @@ function nodeAt(i) {
 
 const nodes = Array.from({ length: N }, (_, k) => nodeAt(k + 1))
 
-/** 每台都给两桶采样（峰值 = 桶里的 max，时刻 = 桶的 ts）。 */
+/** 每台都给两桶采样（峰值 = 桶里的 max，时刻 = 桶的 ts）。
+ *  ★时刻按**北京时间**（UTC+8 固定）构造 —— 与「今日流量」峰值的渲染口径一致；
+ *    用本机 `setHours` 会在 UTC runner 上整体偏 8 小时（同 verify_summary 的坑）。 */
 function peaksFor(id) {
-  const at = (h, m) => Math.floor(new Date().setHours(h, m, 0, 0) / 1000)
+  const bj = new Date(Date.now() + 8 * 3600_000)
+  const at = (h, m) =>
+    Math.floor(Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate(), h, m, 0, 0) / 1000) - 8 * 3600
   return [
     { ts: at(1, 0), net_rx: 1 * KB, net_tx: 1 * KB, net_rx_max: (id % 7 + 1) * 1024 * KB, net_tx_max: (id % 5 + 1) * 1024 * KB },
     { ts: at(2, 0), net_rx: 1 * KB, net_tx: 1 * KB, net_rx_max: 512 * KB, net_tx_max: 256 * KB },
